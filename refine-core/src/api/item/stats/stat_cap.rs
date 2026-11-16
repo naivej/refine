@@ -1,7 +1,8 @@
 use crate::{
     ItemId, OptionalReload, PValue, UnitInterval, Value,
     stats::{
-        ItemStats, StatCapBlcSrcKinds, StatCapSim, StatCapSimStagger, StatTimeOptions,
+        ItemStats, StatCapBlcSrcKinds, StatCapSim, StatCapSimPyfa, StatCapSimPyfaError, StatCapSimStagger,
+        StatCapSimTraceRequest, StatTimeOptions,
         err::{StatItemAppliedError, StatItemError},
     },
     svc::vast::{StatCapBlcSrcKindsInt, StatCapSimStaggerInt},
@@ -61,6 +62,18 @@ impl<'s> ItemStats<'s> {
                 nosf_projectee_item_uid,
             )
             .map_err(|e| StatItemAppliedError::from_svc_err(e, &sol.u_data.items))
+    }
+    /// Evaluate capacitor stability and optional event data using the Pyfa compatibility trial.
+    pub fn get_stat_cap_sim_pyfa(
+        &mut self,
+        factor_reload: bool,
+        trace: Option<StatCapSimTraceRequest>,
+    ) -> Result<StatCapSimPyfa, StatItemError<StatCapSimPyfaError>> {
+        let item_uid = self.uid;
+        let sol = &mut *self.sol;
+        sol.svc
+            .get_stat_item_cap_sim_pyfa(&mut sol.reuse.cseq_cache, &sol.u_data, item_uid, factor_reload, trace)
+            .map_err(|e| StatItemError::from_svc_err(e, &sol.u_data.items))
     }
     pub fn get_stat_neut_resist(&mut self) -> Result<UnitInterval, StatItemError<!>> {
         let item_uid = self.uid;

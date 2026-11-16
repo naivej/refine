@@ -1,6 +1,9 @@
 #[cfg(feature = "dev")]
 pub(crate) use cap::StatCapBlcNosfsOptionsInt;
-pub use cap::{StatCapBlcNosfs, StatCapBlcRegen, StatCapBlcSrcKinds, StatCapSim, StatCapSimStagger};
+pub use cap::{
+    StatCapBlcNosfs, StatCapBlcRegen, StatCapBlcSrcKinds, StatCapSim, StatCapSimPyfa, StatCapSimPyfaError,
+    StatCapSimStagger, StatCapSimTraceRequest,
+};
 pub(crate) use cap::{StatCapBlcSrcKindsInt, StatCapSimStaggerInt};
 pub use charge_options::StatItemChargeOptions;
 pub use crit_options::StatCritOptions;

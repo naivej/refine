@@ -6,13 +6,17 @@ use super::{
 };
 use crate::{
     OptionalReload, PValue,
+    nd::NEffectGeneralOutputGetter,
+    rd::{REffect, REffectId, REffectLocalOpcSpec, REffectProjOpcSpec},
     stats::StatCritOptions,
     svc::{
         Calc, SvcCtx, Vast,
-        cycle::{CseqCache, CycleOptionsSim, CyclingOptions, get_item_cseq_map},
+        cycle::{
+            CSeqHardDtFull, CseqCache, CycleDataFull, CycleOptionsSim, CycleSeq, CyclingOptions, get_item_cseq_map,
+        },
         vast::{
             VastFitData,
-            aggr::{aggr_local_iter, aggr_proj_iter},
+            aggr::{AggrIterData, aggr_local_iter, aggr_proj_iter},
             stats::cap::sim::{
                 event::{CapSimEvent, CapSimEventData, CapSimEventInjector},
                 shared::Direction,
@@ -20,72 +24,166 @@ use crate::{
         },
     },
     ud::UItemId,
-    util::{PrefetchPeekable, RMapVec},
+    util::{PrefetchPeekable, RMapRMap, RMapVec},
 };
+
+type LocalSources = RMapRMap<UItemId, REffectId, REffectLocalOpcSpec<NEffectGeneralOutputGetter>>;
+type ProjSources = RMapRMap<UItemId, REffectId, REffectProjOpcSpec<NEffectGeneralOutputGetter>>;
+
+#[derive(Copy, Clone)]
+pub(in crate::svc::vast::stats::cap::sim) enum CapSourceKind {
+    Consumer,
+    Nosferatu,
+    IncomingNeut,
+    IncomingTransfer,
+    Injector,
+}
+impl CapSourceKind {
+    pub(super) const ALL: [Self; 5] = [
+        Self::Consumer,
+        Self::Nosferatu,
+        Self::IncomingNeut,
+        Self::IncomingTransfer,
+        Self::Injector,
+    ];
+    pub(super) fn direction(self) -> Direction {
+        match self {
+            Self::Consumer | Self::IncomingNeut => Direction::Loss,
+            _ => Direction::Gain,
+        }
+    }
+}
+
+pub(in crate::svc::vast::stats::cap::sim) struct CapSources<'a> {
+    pub(in crate::svc::vast::stats::cap::sim) vast: &'a Vast,
+    pub(in crate::svc::vast::stats::cap::sim) fit_data: &'a VastFitData,
+    pub(in crate::svc::vast::stats::cap::sim) cap_item_uid: UItemId,
+    pub(in crate::svc::vast::stats::cap::sim) nosf_projectee_item_uid: Option<UItemId>,
+    pub(in crate::svc::vast::stats::cap::sim) optional_reloads: Option<OptionalReload>,
+    pub(in crate::svc::vast::stats::cap::sim) limit_instances: bool,
+}
+impl CapSources<'_> {
+    pub(super) fn visit<E>(
+        &self,
+        kind: CapSourceKind,
+        cseq_cache: &mut CseqCache,
+        ctx: &SvcCtx,
+        calc: &mut Calc,
+        emit: impl FnMut(UItemId, AggrIterData<PValue>) -> Result<(), E>,
+    ) -> Result<(), E> {
+        let cycling_options = CyclingOptions::Sim(CycleOptionsSim {
+            optional_reloads: self.optional_reloads,
+            ..
+        });
+        let (sources, projectee_uid) = match kind {
+            CapSourceKind::Consumer | CapSourceKind::Injector => {
+                let sources: &LocalSources = match kind {
+                    CapSourceKind::Consumer => &self.fit_data.cap_consumers,
+                    _ => &self.fit_data.cap_injects,
+                };
+                return visit_sources(
+                    cseq_cache,
+                    ctx,
+                    calc,
+                    cycling_options,
+                    sources,
+                    emit,
+                    |calc, item_uid, effect, cseq, ospec| {
+                        let mut ospec = *ospec;
+                        if !self.limit_instances {
+                            ospec.limit_attr_rid = None;
+                        }
+                        aggr_local_iter(ctx, calc, item_uid, effect, cseq, &ospec, ())
+                    },
+                );
+            }
+            CapSourceKind::Nosferatu => (Some(&self.fit_data.cap_nosfs), self.nosf_projectee_item_uid),
+            CapSourceKind::IncomingNeut => (self.vast.in_neuts.get_l1(&self.cap_item_uid), Some(self.cap_item_uid)),
+            CapSourceKind::IncomingTransfer => (self.vast.in_cap.get_l1(&self.cap_item_uid), Some(self.cap_item_uid)),
+        };
+        if let Some(sources) = sources {
+            let sources: &ProjSources = sources;
+            visit_sources(
+                cseq_cache,
+                ctx,
+                calc,
+                cycling_options,
+                sources,
+                emit,
+                |calc, item_uid, effect, cseq, ospec| {
+                    let mut ospec = *ospec;
+                    if !self.limit_instances {
+                        ospec.local_limit_attr_id = None;
+                        ospec.remote_limit_attr_id = None;
+                    }
+                    aggr_proj_iter(
+                        ctx,
+                        calc,
+                        item_uid,
+                        effect,
+                        cseq,
+                        &ospec,
+                        (),
+                        StatCritOptions::default(),
+                        projectee_uid,
+                    )
+                },
+            )?;
+        }
+        Ok(())
+    }
+}
 
 pub(in crate::svc::vast::stats::cap::sim) fn prepare_events(
     cseq_cache: &mut CseqCache,
     ctx: &SvcCtx,
     calc: &mut Calc,
-    vast: &Vast,
-    optional_reloads: Option<OptionalReload>,
+    sources: &CapSources,
     stagger: &StatCapSimStaggerInt,
-    nosf_projectee_item_uid: Option<UItemId>,
-    fit_data: &VastFitData,
-    cap_item_uid: UItemId,
 ) -> (QuaternaryHeap<CapSimEvent>, Vec<CapSimEvent>) {
-    let cycling_options = CyclingOptions::Sim(CycleOptionsSim { optional_reloads, .. });
     let mut merger = Merger::new();
-    fill_consumers(cseq_cache, ctx, calc, &mut merger, cycling_options, stagger, fit_data);
-    fill_nosfs(
-        cseq_cache,
-        ctx,
-        calc,
-        &mut merger,
-        cycling_options,
-        stagger,
-        nosf_projectee_item_uid,
-        fit_data,
-    );
-    fill_incoming_neuts(
-        cseq_cache,
-        ctx,
-        calc,
-        &mut merger,
-        cycling_options,
-        stagger,
-        vast,
-        cap_item_uid,
-    );
-    fill_incoming_transfers(
-        cseq_cache,
-        ctx,
-        calc,
-        &mut merger,
-        cycling_options,
-        stagger,
-        vast,
-        cap_item_uid,
-    );
+    let mut injector_events = Vec::new();
+    for kind in CapSourceKind::ALL {
+        let direction = kind.direction();
+        let mut stagger_map = RMapVec::new();
+        let Ok(()) = sources.visit(kind, cseq_cache, ctx, calc, |item_uid, iter_data| {
+            if matches!(kind, CapSourceKind::Injector) {
+                injector_events.push(CapSimEvent::new(
+                    PValue::ZERO,
+                    CapSimEventData::InjectorReady(Box::new(CapSimEventInjector {
+                        cycle_iter: PrefetchPeekable::new(iter_data.iter()),
+                    })),
+                ));
+            } else if stagger.is_staggered(item_uid) {
+                stagger_map.add_entry(StaggerKey::new(&iter_data), iter_data);
+            } else {
+                merger.add_entry(PValue::ZERO, iter_data, direction);
+            }
+            Ok::<(), !>(())
+        });
+        process_staggers(stagger_map, &mut merger, direction);
+    }
     let mut events = QuaternaryHeap::new();
     merger.into_sim_events(&mut events);
-    let mut injector_events = Vec::new();
-    fill_injectors(cseq_cache, ctx, calc, &mut injector_events, cycling_options, fit_data);
     (events, injector_events)
 }
 
-fn fill_consumers(
+fn visit_sources<S, E>(
     cseq_cache: &mut CseqCache,
     ctx: &SvcCtx,
     calc: &mut Calc,
-    merger: &mut Merger,
     cycling_options: CyclingOptions,
-    stagger: &StatCapSimStaggerInt,
-    fit_data: &VastFitData,
-) {
-    let direction = Direction::Loss;
-    let mut stagger_map = RMapVec::new();
-    for (&item_uid, item_data) in fit_data.cap_consumers.iter() {
+    sources: &RMapRMap<UItemId, REffectId, S>,
+    mut emit: impl FnMut(UItemId, AggrIterData<PValue>) -> Result<(), E>,
+    mut aggregate: impl FnMut(
+        &mut Calc,
+        UItemId,
+        &REffect,
+        &CycleSeq<CycleDataFull, CSeqHardDtFull>,
+        &S,
+    ) -> Option<AggrIterData<PValue>>,
+) -> Result<(), E> {
+    for (&item_uid, item_data) in sources.iter() {
         let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, item_uid, cycling_options) else {
             continue;
         };
@@ -94,179 +192,10 @@ fn fill_consumers(
                 continue;
             };
             let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-            let Some(iter_data) = aggr_local_iter(ctx, calc, item_uid, effect, cseq, ospec, ()) else {
-                continue;
-            };
-            match stagger.is_staggered(item_uid) {
-                true => stagger_map.add_entry(StaggerKey::new(&iter_data), iter_data),
-                false => merger.add_entry(PValue::ZERO, iter_data, direction),
+            if let Some(iter_data) = aggregate(calc, item_uid, effect, cseq, ospec) {
+                emit(item_uid, iter_data)?;
             }
         }
     }
-    process_staggers(stagger_map, merger, direction);
-}
-
-fn fill_nosfs(
-    cseq_cache: &mut CseqCache,
-    ctx: &SvcCtx,
-    calc: &mut Calc,
-    merger: &mut Merger,
-    cycling_options: CyclingOptions,
-    stagger: &StatCapSimStaggerInt,
-    projectee_item_uid: Option<UItemId>,
-    fit_data: &VastFitData,
-) {
-    let direction = Direction::Gain;
-    let mut stagger_map = RMapVec::new();
-    for (&nosf_item_uid, item_data) in fit_data.cap_nosfs.iter() {
-        let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, nosf_item_uid, cycling_options) else {
-            continue;
-        };
-        for (&effect_rid, ospec) in item_data.iter() {
-            let Some(cseq) = cseq_map.get(effect_rid) else {
-                continue;
-            };
-            let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-            let Some(iter_data) = aggr_proj_iter(
-                ctx,
-                calc,
-                nosf_item_uid,
-                effect,
-                cseq,
-                ospec,
-                (),
-                StatCritOptions::default(),
-                projectee_item_uid,
-            ) else {
-                continue;
-            };
-            match stagger.is_staggered(nosf_item_uid) {
-                true => stagger_map.add_entry(StaggerKey::new(&iter_data), iter_data),
-                false => merger.add_entry(PValue::ZERO, iter_data, direction),
-            }
-        }
-    }
-    process_staggers(stagger_map, merger, direction);
-}
-
-fn fill_incoming_neuts(
-    cseq_cache: &mut CseqCache,
-    ctx: &SvcCtx,
-    calc: &mut Calc,
-    merger: &mut Merger,
-    cycling_options: CyclingOptions,
-    stagger: &StatCapSimStaggerInt,
-    vast: &Vast,
-    cap_item_uid: UItemId,
-) {
-    let Some(neut_data) = vast.in_neuts.get_l1(&cap_item_uid) else {
-        return;
-    };
-    let direction = Direction::Loss;
-    let mut stagger_map = RMapVec::new();
-    for (&neut_item_uid, item_data) in neut_data.iter() {
-        let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, neut_item_uid, cycling_options) else {
-            continue;
-        };
-        for (&effect_rid, ospec) in item_data.iter() {
-            let Some(cseq) = cseq_map.get(effect_rid) else {
-                continue;
-            };
-            let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-            let Some(iter_data) = aggr_proj_iter(
-                ctx,
-                calc,
-                neut_item_uid,
-                effect,
-                cseq,
-                ospec,
-                (),
-                StatCritOptions::default(),
-                Some(cap_item_uid),
-            ) else {
-                continue;
-            };
-            match stagger.is_staggered(neut_item_uid) {
-                true => stagger_map.add_entry(StaggerKey::new(&iter_data), iter_data),
-                false => merger.add_entry(PValue::ZERO, iter_data, direction),
-            }
-        }
-    }
-    process_staggers(stagger_map, merger, direction);
-}
-
-fn fill_incoming_transfers(
-    cseq_cache: &mut CseqCache,
-    ctx: &SvcCtx,
-    calc: &mut Calc,
-    merger: &mut Merger,
-    cycling_options: CyclingOptions,
-    stagger: &StatCapSimStaggerInt,
-    vast: &Vast,
-    cap_item_uid: UItemId,
-) {
-    let Some(transfer_data) = vast.in_cap.get_l1(&cap_item_uid) else {
-        return;
-    };
-    let direction = Direction::Gain;
-    let mut stagger_map = RMapVec::new();
-    for (&transfer_item_uid, item_data) in transfer_data.iter() {
-        let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, transfer_item_uid, cycling_options) else {
-            continue;
-        };
-        for (&effect_rid, ospec) in item_data.iter() {
-            let Some(cseq) = cseq_map.get(effect_rid) else {
-                continue;
-            };
-            let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-            let Some(iter_data) = aggr_proj_iter(
-                ctx,
-                calc,
-                transfer_item_uid,
-                effect,
-                cseq,
-                ospec,
-                (),
-                StatCritOptions::default(),
-                Some(cap_item_uid),
-            ) else {
-                continue;
-            };
-            match stagger.is_staggered(transfer_item_uid) {
-                true => stagger_map.add_entry(StaggerKey::new(&iter_data), iter_data),
-                false => merger.add_entry(PValue::ZERO, iter_data, direction),
-            }
-        }
-    }
-    process_staggers(stagger_map, merger, direction);
-}
-
-fn fill_injectors(
-    cseq_cache: &mut CseqCache,
-    ctx: &SvcCtx,
-    calc: &mut Calc,
-    injector_events: &mut Vec<CapSimEvent>,
-    cycling_options: CyclingOptions,
-    fit_data: &VastFitData,
-) {
-    for (&item_uid, item_data) in fit_data.cap_injects.iter() {
-        let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, item_uid, cycling_options) else {
-            continue;
-        };
-        for (&effect_rid, ospec) in item_data.iter() {
-            let Some(cseq) = cseq_map.get(effect_rid) else {
-                continue;
-            };
-            let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-            let Some(iter_data) = aggr_local_iter(ctx, calc, item_uid, effect, cseq, ospec, ()) else {
-                continue;
-            };
-            injector_events.push(CapSimEvent::new(
-                PValue::ZERO,
-                CapSimEventData::InjectorReady(Box::new(CapSimEventInjector {
-                    cycle_iter: PrefetchPeekable::new(iter_data.iter()),
-                })),
-            ));
-        }
-    }
+    Ok(())
 }

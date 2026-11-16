@@ -1,6 +1,6 @@
 use crate::{
     OptionalReload, PValue, UnitInterval, Value,
-    stats::{StatCapSim, StatTimeOptions},
+    stats::{StatCapSim, StatCapSimPyfa, StatCapSimPyfaError, StatCapSimTraceRequest, StatTimeOptions},
     svc::{
         Svc, SvcCtx,
         cycle::CseqCache,
@@ -54,6 +54,23 @@ impl Svc {
             optional_reloads,
             stagger,
             nosf_projectee_item_uid,
+        )
+    }
+    pub(crate) fn get_stat_item_cap_sim_pyfa(
+        &mut self,
+        cseq_cache: &mut CseqCache,
+        u_data: &UData,
+        item_uid: UItemId,
+        factor_reload: bool,
+        trace: Option<StatCapSimTraceRequest>,
+    ) -> Result<StatCapSimPyfa, IntStatItemError<StatCapSimPyfaError>> {
+        self.vast.get_stat_item_cap_sim_pyfa(
+            cseq_cache,
+            &SvcCtx::new(u_data, &self.eff_projs),
+            &mut self.calc,
+            item_uid,
+            factor_reload,
+            trace,
         )
     }
     pub(crate) fn get_stat_item_neut_resist(

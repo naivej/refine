@@ -1,7 +1,8 @@
 use crate::{
     ItemId, OptionalReload, PValue, UnitInterval, Value,
     stats::{
-        FitStats, StatCapBlcSrcKinds, StatCapSim, StatCapSimStagger, StatTimeOptions,
+        FitStats, StatCapBlcSrcKinds, StatCapSim, StatCapSimPyfa, StatCapSimPyfaError, StatCapSimStagger,
+        StatCapSimTraceRequest, StatTimeOptions,
         err::{StatFitShipAppliedError, StatFitShipError},
     },
 };
@@ -32,6 +33,14 @@ impl<'s> FitStats<'s> {
         Ok(self
             .get_ship_for_stats()?
             .get_stat_cap_sim(cap_perc, optional_reloads, stagger, nosf_projectee_item_id)?)
+    }
+    /// Evaluate capacitor stability and optional event data using the Pyfa compatibility trial.
+    pub fn get_stat_cap_sim_pyfa(
+        &mut self,
+        factor_reload: bool,
+        trace: Option<StatCapSimTraceRequest>,
+    ) -> Result<StatCapSimPyfa, StatFitShipError<StatCapSimPyfaError>> {
+        Ok(self.get_ship_for_stats()?.get_stat_cap_sim_pyfa(factor_reload, trace)?)
     }
     pub fn get_stat_neut_resist(&mut self) -> Result<UnitInterval, StatFitShipError<!>> {
         Ok(self.get_ship_for_stats()?.get_stat_neut_resist()?)
