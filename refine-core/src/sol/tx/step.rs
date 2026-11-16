@@ -1,6 +1,6 @@
 use crate::{
-    CountNz, EffectMode, FitSecStatus, MinionState, ModuleState, MoveMode, NpcProp, OptionalReload, PValue, RearmMinion,
-    RemoveMode, SecZone, ServiceState, SkillLevel, Spool,
+    CountNz, EffectMode, FitSecStatus, MinionState, ModuleState, MoveMode, NpcProp, OptionalReload, PValue,
+    RearmMinion, RemoveMode, SecZone, ServiceState, SkillLevel, Spool,
     ad::{AEffectId, AItemId},
     ud::{UFitId, UFleetId, UItemId},
 };

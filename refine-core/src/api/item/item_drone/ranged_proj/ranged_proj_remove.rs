@@ -1,8 +1,4 @@
-use crate::{
-    err::basic::ProjFoundError,
-    sol::SolCore,
-    ud::UItemId,
-};
+use crate::{err::basic::ProjFoundError, sol::SolCore, ud::UItemId};
 
 impl SolCore {
     pub(in crate::api::item) fn internal_remove_drone_proj(

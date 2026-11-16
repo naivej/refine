@@ -42,7 +42,11 @@ impl ADataGenerator {
                 self.a_data.warnings.customization.push(warning);
                 return;
             };
-            if n_effect.aid.dc_dogma_effect().is_none_or(|id| handler.use_built_in_effect_update(id)) {
+            if n_effect
+                .aid
+                .dc_dogma_effect()
+                .is_none_or(|id| handler.use_built_in_effect_update(id))
+            {
                 effect_updater(a_effect, &mut self.a_data.warnings.customization);
             }
         }

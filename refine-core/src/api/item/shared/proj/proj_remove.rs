@@ -32,7 +32,8 @@ impl SolCore {
             _ => unreachable!("unprojectable item kind is used in projection"),
         }?;
         if recording {
-            self.undo.record(UndoStep::ProjRemoved(projector_uid, projectee_uid, range));
+            self.undo
+                .record(UndoStep::ProjRemoved(projector_uid, projectee_uid, range));
         }
         Ok(())
     }

@@ -376,11 +376,12 @@ impl Simulation {
 
     fn finish_full_start_trace(mut self, work: &mut usize) -> Result<Vec<(f64, f64)>, StatCapSimPyfaError> {
         let Some((time, activation)) = self.repeat_boundary else {
-            // Pyfa keeps the summary's history when the six-hour run finishes without early repeat detection.
+            // Pyfa keeps the summary's history when the six-hour run finishes without early repeat
+            // detection.
             return Ok(self.trace);
         };
-        // Pyfa runs a one-hour graph simulation after repeat detection. The prefix is the same up to
-        // the repeat boundary; process the pending activation with repeat detection disabled.
+        // Pyfa runs a one-hour graph simulation after repeat detection. The prefix is the same up
+        // to the repeat boundary; process the pending activation with repeat detection disabled.
         let trace_limit_ms = TRACE_LIMIT_S * 1000.0;
         if self.last_trace_ms.is_some_and(|recorded| recorded >= trace_limit_ms) {
             self.trace.pop();
