@@ -2,11 +2,12 @@ use std::collections::hash_map::Entry;
 
 use crate::{
     ad::ADataGenerator,
+    ed::EveDataHandlerCore,
     nd::{N_EFFECT_MAP, NEffect},
 };
 
 impl ADataGenerator {
-    pub(super) fn customize_effects(&mut self) {
+    pub(super) fn customize_effects(&mut self, handler: &dyn EveDataHandlerCore) {
         for n_effect in N_EFFECT_MAP.values() {
             if let Some(assigned) = self.assign_effect(n_effect) {
                 match assigned {
@@ -17,7 +18,7 @@ impl ADataGenerator {
                     }
                 }
             }
-            self.update_effect(n_effect);
+            self.update_effect(n_effect, handler);
         }
     }
     fn add_effect(&mut self, n_effect: &NEffect) {
@@ -34,14 +35,16 @@ impl ADataGenerator {
             }
         }
     }
-    fn update_effect(&mut self, n_effect: &NEffect) {
+    fn update_effect(&mut self, n_effect: &NEffect, handler: &dyn EveDataHandlerCore) {
         if let Some(effect_updater) = n_effect.adg_update_effect_fn {
             let Some(a_effect) = self.a_data.effects.data.get_mut(&n_effect.aid) else {
                 let warning = format!("effect {}: not found for customization", n_effect.aid);
                 self.a_data.warnings.customization.push(warning);
                 return;
             };
-            effect_updater(a_effect, &mut self.a_data.warnings.customization);
+            if n_effect.aid.dc_dogma_effect().is_none_or(|id| handler.use_built_in_effect_update(id)) {
+                effect_updater(a_effect, &mut self.a_data.warnings.customization);
+            }
         }
     }
     fn assign_effect(&mut self, n_effect: &NEffect) -> Option<bool> {

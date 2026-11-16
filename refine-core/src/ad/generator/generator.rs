@@ -26,7 +26,7 @@ impl ADataGenerator {
         self.clean_unused()?;
         self.validate();
         self.convert_main();
-        self.customize();
+        self.customize(ed_handler.get_impl());
         self.convert_aux();
         Ok(self.a_data)
     }

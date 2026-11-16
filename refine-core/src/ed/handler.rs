@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::ed::EData;
+use crate::ed::{EData, EEffectId};
 
 /// EVE data handler.
 ///
@@ -42,6 +42,13 @@ pub trait EveDataHandlerCore: fmt::Debug + Send + Sync {
     fn get_data(&self) -> Result<EData, EveDataHandlerError>;
     /// Get version of the data.
     fn get_data_version(&self) -> Result<String, EveDataHandlerError>;
+    /// Whether the built-in conversion update can replace the supplied effect data.
+    ///
+    /// Return false only when this handler supplies the data normally set by that update.
+    /// Include changes to this choice in the data version used for cache keys.
+    fn use_built_in_effect_update(&self, _effect_id: EEffectId) -> bool {
+        true
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
