@@ -1,13 +1,17 @@
 use crate::{PValue, misc::Xyz, rd::RItemBase, ud::UPhysics};
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+enum UProjRange {
+    Geometric { surface_to_surface: PValue },
+    Explicit(PValue),
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) struct UProjData {
     src_physics: UPhysics,
     tgt_physics: UPhysics,
-    /// Center-to-center range
-    range_c2c: PValue,
-    /// Surface-to-surface range
-    range_s2s: PValue,
+    geometric_range_c2c: PValue,
+    range: UProjRange,
     src_radius: PValue,
     tgt_radius: PValue,
 }
@@ -37,20 +41,43 @@ impl UProjData {
         Self {
             src_physics,
             tgt_physics,
-            range_c2c,
-            range_s2s: calc_range_s2s(range_c2c, src_radius, tgt_radius),
+            geometric_range_c2c: range_c2c,
+            range: UProjRange::Geometric {
+                surface_to_surface: calc_range_s2s(range_c2c, src_radius, tgt_radius),
+            },
             src_radius,
             tgt_radius,
         }
     }
     pub(crate) fn get_range_c2c(&self) -> PValue {
-        self.range_c2c
+        self.get_range_override().unwrap_or(self.geometric_range_c2c)
     }
     pub(crate) fn get_range_s2s(&self) -> PValue {
-        self.range_s2s
+        match self.range {
+            UProjRange::Geometric { surface_to_surface } => surface_to_surface,
+            UProjRange::Explicit(range) => range,
+        }
     }
     pub(crate) fn get_range_c2s(&self) -> PValue {
-        calc_range_c2s(self.range_c2c, self.tgt_radius)
+        self.get_range_override()
+            .unwrap_or_else(|| calc_range_c2s(self.geometric_range_c2c, self.tgt_radius))
+    }
+    pub(crate) fn get_geometric_range_c2c(&self) -> PValue {
+        self.geometric_range_c2c
+    }
+    pub(crate) fn get_range_override(&self) -> Option<PValue> {
+        match self.range {
+            UProjRange::Geometric { .. } => None,
+            UProjRange::Explicit(range) => Some(range),
+        }
+    }
+    pub(crate) fn set_range_override(&mut self, range: Option<PValue>) {
+        self.range = match range {
+            Some(range) => UProjRange::Explicit(range),
+            None => UProjRange::Geometric {
+                surface_to_surface: calc_range_s2s(self.geometric_range_c2c, self.src_radius, self.tgt_radius),
+            },
+        };
     }
     pub(crate) fn get_tgt_radius(&self) -> PValue {
         self.tgt_radius
@@ -75,13 +102,13 @@ impl UProjData {
     }
     pub(crate) fn update_src_physics(&mut self, src_physics: UPhysics) {
         self.src_physics = src_physics;
-        self.range_c2c = calc_range_c2c(self.src_physics.coordinates, self.tgt_physics.coordinates);
-        self.range_s2s = calc_range_s2s(self.range_c2c, self.src_radius, self.tgt_radius);
+        self.geometric_range_c2c = calc_range_c2c(self.src_physics.coordinates, self.tgt_physics.coordinates);
+        self.update_s2s_range();
     }
     pub(crate) fn update_tgt_physics(&mut self, tgt_physics: UPhysics) {
         self.tgt_physics = tgt_physics;
-        self.range_c2c = calc_range_c2c(self.src_physics.coordinates, self.tgt_physics.coordinates);
-        self.range_s2s = calc_range_s2s(self.range_c2c, self.src_radius, self.tgt_radius);
+        self.geometric_range_c2c = calc_range_c2c(self.src_physics.coordinates, self.tgt_physics.coordinates);
+        self.update_s2s_range();
     }
     pub(crate) fn update_src_radius(&mut self, src_radius: PValue) -> bool {
         if self.src_radius == src_radius {
@@ -105,7 +132,9 @@ impl UProjData {
         self.update_s2s_range();
     }
     fn update_s2s_range(&mut self) {
-        self.range_s2s = calc_range_s2s(self.range_c2c, self.src_radius, self.tgt_radius)
+        if let UProjRange::Geometric { surface_to_surface } = &mut self.range {
+            *surface_to_surface = calc_range_s2s(self.geometric_range_c2c, self.src_radius, self.tgt_radius);
+        }
     }
 }
 
@@ -141,16 +170,9 @@ mod debug {
             self.src_radius
         }
         pub(crate) fn consistency_check(&self) -> DebugResult {
-            let Self {
-                range_c2c,
-                range_s2s,
-                src_radius,
-                tgt_radius,
-                // Not checked
-                src_physics: _,
-                tgt_physics: _,
-            } = self;
-            if *range_s2s != calc_range_s2s(*range_c2c, *src_radius, *tgt_radius) {
+            if let UProjRange::Geometric { surface_to_surface } = self.range
+                && surface_to_surface != calc_range_s2s(self.geometric_range_c2c, self.src_radius, self.tgt_radius)
+            {
                 return Err(Default::default());
             }
             Ok(())

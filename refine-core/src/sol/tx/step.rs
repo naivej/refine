@@ -1,5 +1,5 @@
 use crate::{
-    CountNz, EffectMode, FitSecStatus, MinionState, ModuleState, MoveMode, NpcProp, OptionalReload, RearmMinion,
+    CountNz, EffectMode, FitSecStatus, MinionState, ModuleState, MoveMode, NpcProp, OptionalReload, PValue, RearmMinion,
     RemoveMode, SecZone, ServiceState, SkillLevel, Spool,
     ad::{AEffectId, AItemId},
     ud::{UFitId, UFleetId, UItemId},
@@ -26,8 +26,9 @@ pub(crate) enum UndoStep {
     FitSecStatus(UFitId, FitSecStatus),
     // Item - general
     ItemEffectMode(UItemId, AEffectId, EffectMode),
-    ProjAdded(UItemId, UItemId),   // Projector and projectee
-    ProjRemoved(UItemId, UItemId), // Projector and projectee
+    ProjAdded(UItemId, UItemId), // Projector and projectee
+    ProjRemoved(UItemId, UItemId, Option<PValue>),
+    ProjRange(UItemId, UItemId, Option<PValue>),
     // Item - autocharge
     AutochargeState(UItemId, bool),
     // Item - booster

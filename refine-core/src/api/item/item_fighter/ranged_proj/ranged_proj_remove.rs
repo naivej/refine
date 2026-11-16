@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use crate::{
     err::basic::ProjFoundError,
-    sol::{SolCore, UndoStep},
+    sol::SolCore,
     ud::UItemId,
 };
 
@@ -37,9 +37,6 @@ impl SolCore {
         self.rev_projs.unreg_projectee(fighter_uid, projectee_uid);
         let u_fighter = self.u_data.items.get_mut(fighter_uid).dc_fighter_mut().unwrap();
         u_fighter.get_projs_mut().remove(projectee_uid);
-        if self.undo.is_recording() {
-            self.undo.record(UndoStep::ProjRemoved(fighter_uid, projectee_uid));
-        }
         Ok(())
     }
 }

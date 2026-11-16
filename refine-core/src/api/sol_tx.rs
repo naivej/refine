@@ -103,8 +103,14 @@ impl SolCore {
             UndoStep::ProjAdded(projector_uid, projectee_uid) => {
                 self.internal_remove_projection(projector_uid, projectee_uid).unwrap();
             }
-            UndoStep::ProjRemoved(projector_uid, projectee_uid) => {
+            UndoStep::ProjRemoved(projector_uid, projectee_uid, range) => {
                 self.internal_add_projection(projector_uid, projectee_uid).unwrap();
+                if range.is_some() {
+                    self.internal_set_proj_range(projector_uid, projectee_uid, range);
+                }
+            }
+            UndoStep::ProjRange(projector_uid, projectee_uid, range) => {
+                self.internal_set_proj_range(projector_uid, projectee_uid, range);
             }
             // Item - booster
             UndoStep::BoosterRemoved(booster_uid) => self.internal_reattach_booster(booster_uid),

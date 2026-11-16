@@ -199,7 +199,7 @@ fn calc_angular(
         proj_data.get_tgt_speed(),
     );
     let velocity = tgt_velocity - src_velocity;
-    let range_c2c = proj_data.get_range_c2c();
+    let range_c2c = proj_data.get_geometric_range_c2c();
     let result = Xyz::get_vector_cross_product(velocity, coordinates).get_vector_magnitude() / range_c2c.powi(2);
     match result.is_nan() {
         true => PValue::ZERO,

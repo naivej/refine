@@ -1,6 +1,6 @@
 use crate::{
     err::basic::ProjFoundError,
-    sol::{SolCore, UndoStep},
+    sol::SolCore,
     ud::UItemId,
 };
 
@@ -24,9 +24,6 @@ impl SolCore {
         self.rev_projs.unreg_projectee(proj_effect_uid, projectee_uid);
         let u_proj_effect = self.u_data.items.get_mut(proj_effect_uid).dc_proj_effect_mut().unwrap();
         u_proj_effect.get_projs_mut().remove(projectee_uid);
-        if self.undo.is_recording() {
-            self.undo.record(UndoStep::ProjRemoved(proj_effect_uid, projectee_uid));
-        }
         Ok(())
     }
 }
