@@ -477,7 +477,7 @@ impl Calc {
             dogma_val = Value::min(dogma_val, limiter_cval.dogma);
         }
         if ctx.ac().limited_precision.contains(&attr_rid) {
-            dogma_val.round_to_digits(2);
+            dogma_val = ctx.round_fitting_resource(dogma_val);
         }
         // Post-dogma calculations
         let extra_val = accumulator.apply_extra_mods(dogma_val);

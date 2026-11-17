@@ -264,7 +264,7 @@ fn validate_fast_fitting(
         return true;
     }
     let max = get_max_resource(ctx, calc, fit.ship, max_attr_rid).unwrap_or(Value::ZERO);
-    total_use.rounded_to_digits(2) <= max
+    ctx.round_fitting_resource(total_use) <= max
 }
 fn validate_fast_other(
     kfs: &RSet<UItemId>,
@@ -315,7 +315,7 @@ fn validate_verbose_fitting(
     if users.is_empty() {
         return ValResult::Passed;
     }
-    total_use.round_to_digits(2);
+    let total_use = ctx.round_fitting_resource(total_use);
     let max = get_max_resource(ctx, calc, fit.ship, max_attr_rid);
     if total_use <= max.unwrap_or(Value::ZERO) {
         return ValResult::Passed;

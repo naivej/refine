@@ -1,7 +1,9 @@
 use crate::{
+    Value,
     rd::{RAttrConsts, REffectConsts},
     svc::{calc::RawModTemplates, eff_projs::EffProjs},
     ud::UData,
+    util::round_pyfa_fitting,
 };
 
 #[derive(Copy, Clone)]
@@ -21,5 +23,12 @@ impl<'u, 'p> SvcCtx<'u, 'p> {
     }
     pub(crate) fn rmt(&self) -> &RawModTemplates {
         self.u_data.r_data.get_rmod_templates()
+    }
+    pub(crate) fn round_fitting_resource(&self, value: Value) -> Value {
+        if self.u_data.pyfa_fitting_rounding {
+            Value::from_f64_unchecked(round_pyfa_fitting(value.into_f64()))
+        } else {
+            value.rounded_to_digits(2)
+        }
     }
 }

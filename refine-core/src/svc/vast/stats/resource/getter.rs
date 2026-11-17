@@ -85,7 +85,7 @@ fn get_resource_stats_fitting(
         .sum();
     // Round possible float errors despite individual use values being rounded
     StatResource {
-        used: used.rounded_to_digits(2),
+        used: ctx.round_fitting_resource(used),
         output,
     }
 }

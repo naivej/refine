@@ -21,6 +21,30 @@ pub(crate) fn round(val: f64, digits: i32) -> f64 {
     (val * mul).round() / mul
 }
 
+/// Match Python's `round(value, 2)` for the CPU and powergrid attributes and totals.
+pub(crate) fn round_pyfa_fitting(value: f64) -> f64 {
+    let magnitude = value.abs();
+    // At 2^46 and above, rounding to cents cannot change the represented value.
+    if !magnitude.is_finite() || magnitude >= 70_368_744_177_664.0 {
+        return value;
+    }
+    let scaled = magnitude * 100.0;
+    // Multiplication can produce an apparent decimal tie. Recover the sign of the exact error.
+    let rounded = if scaled.fract() == 0.5 {
+        let residual = magnitude.mul_add(100.0, -scaled);
+        if residual < 0.0 {
+            scaled.floor()
+        } else if residual > 0.0 {
+            scaled.ceil()
+        } else {
+            scaled.round_ties_even()
+        }
+    } else {
+        scaled.round_ties_even()
+    };
+    (rounded / 100.0).copysign(value)
+}
+
 /// Check if a number is close to an expected one.
 ///
 /// The difference has to be within the relative tolerance of the expected number, or within the
@@ -49,6 +73,29 @@ fn pow10(exp: i32) -> f64 {
     match (POW10_MIN..=POW10_MAX).contains(&exp) {
         true => POW10[(exp - POW10_MIN) as usize],
         false => 10.0_f64.powi(exp),
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn pyfa_fitting_rounding_matches_python_at_decimal_boundaries() {
+    let boundary: f64 = 65.625;
+    let cases: [(f64, f64); 12] = [
+        (boundary, 65.62),
+        (boundary.next_up(), 65.63),
+        (boundary.next_down(), 65.62),
+        (2.625, 2.62),
+        (2.875, 2.88),
+        (2.675, 2.67),
+        (2.685, 2.69),
+        (-2.675, -2.67),
+        (-0.004, -0.0),
+        (70_368_744_177_663.99, 70_368_744_177_663.99),
+        (70_368_744_177_664.0, 70_368_744_177_664.0),
+        (f64::MAX, f64::MAX),
+    ];
+    for (value, expected) in cases {
+        assert_eq!(round_pyfa_fitting(value).to_bits(), expected.to_bits(), "{value}");
     }
 }
 

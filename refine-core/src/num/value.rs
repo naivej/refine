@@ -139,9 +139,6 @@ impl Value {
     pub(crate) fn rounded_to_digits(self, digits: i32) -> Self {
         Self(round(self.0, digits))
     }
-    pub(crate) fn round_to_digits(&mut self, digits: i32) {
-        self.0 = round(self.0, digits);
-    }
     pub(crate) fn is_finite(self) -> bool {
         self.0.is_finite()
     }

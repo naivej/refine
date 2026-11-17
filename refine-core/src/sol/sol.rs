@@ -26,8 +26,15 @@ pub type Sol = SolGen<[SolCore]>;
 
 impl SolOwned {
     pub fn new(src: &Src) -> Self {
+        Self::new_with_fitting_rounding(src, false)
+    }
+    /// Use Pyfa's decimal rounding rule where Refine rounds fitting CPU and powergrid.
+    pub fn new_with_pyfa_fitting_rounding(src: &Src) -> Self {
+        Self::new_with_fitting_rounding(src, true)
+    }
+    fn new_with_fitting_rounding(src: &Src, pyfa_fitting_rounding: bool) -> Self {
         Self {
-            inner: [SolCore::new(src)],
+            inner: [SolCore::new(src, pyfa_fitting_rounding)],
         }
     }
 }
@@ -80,9 +87,9 @@ pub struct SolCore {
     pub(crate) undo: UndoLog,
 }
 impl SolCore {
-    fn new(src: &Src) -> Self {
+    fn new(src: &Src, pyfa_fitting_rounding: bool) -> Self {
         Self {
-            u_data: UData::new(src.r_data.clone()),
+            u_data: UData::new(src.r_data.clone(), pyfa_fitting_rounding),
             svc: Svc::new(),
             rev_projs: RevProjs::new(),
             reuse: SolReuse::new(),

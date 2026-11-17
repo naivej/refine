@@ -178,7 +178,7 @@ impl Calc {
             })
         }
         if ctx.ac().limited_precision.contains(&attr_rid) {
-            dogma_attr_info.value.round_to_digits(2);
+            dogma_attr_info.value = ctx.round_fitting_resource(dogma_attr_info.value);
         }
         // Post-dogma calculations
         let extra_attr_info = accumulator.apply_extra_mods(dogma_attr_info);
