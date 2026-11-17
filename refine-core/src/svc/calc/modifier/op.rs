@@ -12,6 +12,7 @@ pub(crate) enum CalcOp {
     PostDiv,
     PostPerc,
     PostPercImmune,
+    PostPercForcePenalty,
     PostAssign,
     ExtraAdd,
     ExtraMul,
@@ -33,6 +34,7 @@ impl CalcOp {
             ad::AOp::PostDiv => Self::PostDiv,
             ad::AOp::PostPerc => Self::PostPerc,
             ad::AOp::PostPercImmune => Self::PostPercImmune,
+            ad::AOp::PostPercForcePenalty => Self::PostPercForcePenalty,
             ad::AOp::PostAssign => Self::PostAssign,
         }
     }

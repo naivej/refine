@@ -463,7 +463,11 @@ impl Calc {
             .take()
             .unwrap_or_else(|| Box::new(ModAccumFast::new()));
         self.accumulate_modifications(ctx, &mut accumulator, item_uid, item, attr, mod_filter);
-        let mut dogma_val = accumulator.apply_dogma_mods(base_val, attr.hig);
+        let mut dogma_val = accumulator.apply_dogma_mods(
+            base_val,
+            attr.hig,
+            ctx.u_data.pyfa_fitting_rounding && !attr.penalizable && ctx.ac().limited_precision.contains(&attr_rid),
+        );
         // Lower value limit
         if let Some(limiter_attr_rid) = attr.min_attr_rid
             && let Ok(limiter_cval) = self.get_item_attr_rfull(ctx, item_uid, limiter_attr_rid)

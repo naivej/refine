@@ -273,6 +273,7 @@ fn get_mod_operation(arg_map: &RMap<String, EPrimitive>) -> Result<AOp, String> 
         6 => Ok(AOp::PostPerc),
         7 => Ok(AOp::PostAssign),
         8 => Ok(AOp::PostPercImmune),
+        100 => Ok(AOp::PostPercForcePenalty),
         _ => Err(format!("unknown operation {op}")),
     }
 }

@@ -52,6 +52,7 @@ impl AttrValInfo {
 }
 
 pub(in crate::svc::calc) struct ModAccumInfo {
+    phase_mask: u8,
     pre_assign: AccumAssign,
     pre_mul: AccumMul,
     pre_div: AccumDiv,
@@ -67,6 +68,7 @@ pub(in crate::svc::calc) struct ModAccumInfo {
 impl ModAccumInfo {
     pub(in crate::svc::calc) fn new() -> Self {
         Self {
+            phase_mask: 0,
             pre_assign: AccumAssign::new(),
             pre_mul: AccumMul::new(),
             pre_div: AccumDiv::new(),
@@ -92,6 +94,13 @@ impl ModAccumInfo {
         aggr_mode: AggrMode,
         affectors: SmallVec<[CalcModInfoAffector; 1]>,
     ) {
+        self.phase_mask |= match op {
+            CalcOp::PreMul => 1,
+            CalcOp::PostMul | CalcOp::PostMulImmune | CalcOp::PostPercForcePenalty => 2,
+            CalcOp::PostPerc | CalcOp::PostPercImmune => 4,
+            CalcOp::ExtraAdd | CalcOp::ExtraMul => 0,
+            _ => 8,
+        };
         match op {
             CalcOp::PreAssign => self
                 .pre_assign
@@ -155,6 +164,16 @@ impl ModAccumInfo {
                 is_penal(attr_pen, &item_cat),
                 affectors,
             ),
+            CalcOp::PostPercForcePenalty => self.post_mul.add_raw_val(
+                effect_rid,
+                op,
+                Value::ONE + val / Value::HUNDRED,
+                proj_mult,
+                res_mult,
+                aggr_mode,
+                attr_pen,
+                affectors,
+            ),
             CalcOp::PostPercImmune => self
                 .post_perc
                 .add_raw_val(effect_rid, op, val, proj_mult, res_mult, aggr_mode, false, affectors),
@@ -169,7 +188,23 @@ impl ModAccumInfo {
                 .add_raw_val(effect_rid, op, val, proj_mult, res_mult, aggr_mode, false, affectors),
         };
     }
-    pub(in crate::svc::calc) fn apply_dogma_mods(&mut self, attr_info: AttrValInfo, hig: bool) -> AttrValInfo {
+    pub(in crate::svc::calc) fn apply_dogma_mods(
+        &mut self,
+        attr_info: AttrValInfo,
+        hig: bool,
+        pyfa_fitting: bool,
+    ) -> AttrValInfo {
+        // Match the guarded Pyfa fitting multiplier order in ModAccumFast.
+        if pyfa_fitting && (self.phase_mask == 5 || self.phase_mask == 6) {
+            let factor = AttrValInfo::new(Value::ONE);
+            let factor = if self.phase_mask == 5 {
+                self.pre_mul.modify_info(factor)
+            } else {
+                self.post_mul.modify_info(factor)
+            };
+            let factor = self.post_perc.modify_info(factor);
+            return AccumMul::apply_comb_to_base(attr_info, Some(factor));
+        }
         let attr_info = self.pre_assign.modify_info(attr_info, hig);
         let attr_info = self.pre_mul.modify_info(attr_info);
         let attr_info = self.pre_div.modify_info(attr_info);

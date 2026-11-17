@@ -102,6 +102,16 @@ impl ModAccumFast {
                 self.post_perc
                     .add_raw_val(val, proj_mult, res_mult, aggr_mode, is_penal(attr_pen, &item_cat))
             }
+            CalcOp::PostPercForcePenalty => {
+                self.touched.insert(SubAccums::POST_MUL);
+                self.post_mul.add_raw_val(
+                    Value::ONE + val / Value::HUNDRED,
+                    proj_mult,
+                    res_mult,
+                    aggr_mode,
+                    attr_pen,
+                )
+            }
             CalcOp::PostPercImmune => {
                 self.touched.insert(SubAccums::POST_PERC);
                 self.post_perc.add_raw_val(val, proj_mult, res_mult, aggr_mode, false)
@@ -121,7 +131,22 @@ impl ModAccumFast {
             }
         };
     }
-    pub(in crate::svc::calc) fn apply_dogma_mods(&mut self, base_val: Value, attr_hig: bool) -> Value {
+    pub(in crate::svc::calc) fn apply_dogma_mods(
+        &mut self,
+        base_val: Value,
+        attr_hig: bool,
+        pyfa_fitting: bool,
+    ) -> Value {
+        // Pyfa combines unpenalized fitting multipliers before multiplying the base.
+        // Group only these two phase combinations: other phases may change the result.
+        if pyfa_fitting && self.touched.bits() == (SubAccums::PRE_MUL | SubAccums::POST_PERC).bits() {
+            let mult = self.post_perc.modify_val(self.pre_mul.modify_val(Value::ONE));
+            return base_val * mult;
+        }
+        if pyfa_fitting && self.touched.bits() == (SubAccums::POST_MUL | SubAccums::POST_PERC).bits() {
+            let mult = self.post_perc.modify_val(self.post_mul.modify_val(Value::ONE));
+            return base_val * mult;
+        }
         let mut val = base_val;
         if self.touched.contains(SubAccums::PRE_ASSIGN) {
             val = self.pre_assign.modify_val(val, attr_hig);
@@ -630,5 +655,101 @@ impl AggrArbiter for AggrArbiterPenMax {
             Ordering::Equal => !added.pen && stored.pen,
             Ordering::Less => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod pyfa_order_tests {
+    use super::{
+        super::info::{AttrValInfo, ModAccumInfo},
+        *,
+    };
+    use crate::rd::REffectId;
+
+    #[test]
+    fn pyfa_fitting_groups_compatible_multipliers_and_keeps_info_and_default_order() {
+        for first in [CalcOp::PreMul, CalcOp::PostMul] {
+            for (enabled, additive, expected) in [
+                (true, false, 35.0 * (0.1 * 0.75)),
+                (false, false, (35.0 * 0.1) * 0.75),
+                (true, true, (35.0 * 0.1 + 1.0) * 0.75),
+            ] {
+                let mut fast = ModAccumFast::new();
+                let mut info = ModAccumInfo::new();
+                let mut add = |op, v| {
+                    let val = Value::from_f64_unchecked(v);
+                    fast.add_val(
+                        val,
+                        op,
+                        None,
+                        None,
+                        false,
+                        AItemCatId::from_i32(7),
+                        AggrMode::Stack,
+                        true,
+                    );
+                    info.add_val(
+                        REffectId::default(),
+                        op,
+                        val,
+                        None,
+                        None,
+                        false,
+                        AItemCatId::from_i32(7),
+                        AggrMode::Stack,
+                        smallvec::smallvec![],
+                    );
+                };
+                add(first, 0.1);
+                add(CalcOp::PostPerc, -25.0);
+                if additive {
+                    add(CalcOp::Add, 1.0);
+                }
+                // Post-multiplication follows addition; use the matching phase order.
+                let expected = if additive && matches!(first, CalcOp::PostMul) {
+                    (35.0 + 1.0) * 0.1 * 0.75
+                } else {
+                    expected
+                };
+                let actual = fast.apply_dogma_mods(Value::from_f64_unchecked(35.0), true, enabled);
+                let detailed = info.apply_dogma_mods(AttrValInfo::new(Value::from_f64_unchecked(35.0)), true, enabled);
+                assert_eq!(actual.into_f64(), expected);
+                assert_eq!(detailed.value, actual);
+                assert_eq!(detailed.effective_infos.len(), if additive { 3 } else { 2 });
+            }
+        }
+    }
+    #[test]
+    fn pyfa_fitting_keeps_division_phase_order() {
+        let mut fast = ModAccumFast::new();
+        let mut info = ModAccumInfo::new();
+        for (op, raw) in [(CalcOp::PreMul, 0.1), (CalcOp::PreDiv, 2.0), (CalcOp::PostPerc, -25.0)] {
+            let value = Value::from_f64_unchecked(raw);
+            fast.add_val(
+                value,
+                op,
+                None,
+                None,
+                false,
+                AItemCatId::from_i32(7),
+                AggrMode::Stack,
+                true,
+            );
+            info.add_val(
+                REffectId::default(),
+                op,
+                value,
+                None,
+                None,
+                false,
+                AItemCatId::from_i32(7),
+                AggrMode::Stack,
+                smallvec::smallvec![],
+            );
+        }
+        let result = fast.apply_dogma_mods(Value::from_f64_unchecked(35.0), true, true);
+        let detail = info.apply_dogma_mods(AttrValInfo::new(Value::from_f64_unchecked(35.0)), true, true);
+        assert_eq!(result.into_f64(), ((35.0 * 0.1) / 2.0) * 0.75);
+        assert_eq!(detail.value, result);
     }
 }

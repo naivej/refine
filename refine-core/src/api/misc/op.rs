@@ -57,7 +57,7 @@ impl Op {
             CalcOp::PostMul => Self::PostMul,
             // Since info already exposes if modification is penalized or not, we don't need to have
             // this operator to be part of the info
-            CalcOp::PostMulImmune => Self::PostMul,
+            CalcOp::PostMulImmune | CalcOp::PostPercForcePenalty => Self::PostMul,
             CalcOp::PostDiv => Self::PostDiv,
             CalcOp::PostPerc => Self::PostPerc,
             // Since info already exposes if modification is penalized or not, we don't need to have

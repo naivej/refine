@@ -6,6 +6,7 @@ use super::{
 };
 use crate::{
     PValue,
+    ad::AEffectId,
     misc::DmgKinds,
     stats::{
         StatCritOptions, StatDmg, StatDmgApplied, StatDmgEntry, StatDmgEntryApplied, StatDmgItemKinds, StatTimeOptions,
@@ -184,7 +185,12 @@ impl VastFitData {
             let item = ctx.u_data.items.get(item_uid);
             for (&effect_rid, ospec) in item_data.iter() {
                 let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
-                if !item_kinds.resolve(item, effect) {
+                if !item_kinds.resolve(item, effect)
+                    && !(ctx.u_data.pyfa_damage_compatibility
+                        && projectee_uid.is_none()
+                        && effect.aid == AEffectId::DEFENDER_MISSILE_LAUNCHING
+                        && item_kinds.pyfa_defender_enabled())
+                {
                     continue;
                 }
                 let Some(cseq) = cseq_map.get(effect_rid) else {

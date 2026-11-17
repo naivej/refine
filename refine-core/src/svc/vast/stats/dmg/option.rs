@@ -75,6 +75,9 @@ impl StatDmgItemKinds {
     }
 }
 impl StatDmgItemKinds {
+    pub(in crate::svc::vast::stats) fn pyfa_defender_enabled(&self) -> bool {
+        self.missile.is_enabled(self.default)
+    }
     pub(in crate::svc::vast::stats) fn resolve(&self, u_item: &UItem, r_effect: &REffect) -> bool {
         match u_item {
             UItem::Drone(drone) => {

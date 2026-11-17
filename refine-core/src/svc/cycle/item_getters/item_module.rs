@@ -422,7 +422,11 @@ impl CycleSoftDtFull {
         // If auto-repeats are not allowed, but there is no reactivation delay - set downtime
         // duration to one tick. Tested on Singularity on 2026-06-14 by using direct DD on random
         // capitals (DD cycle duration 252 seconds, damage intervals were 253 seconds)
-        let mut total_duration = PValue::SERVER_TICK_S;
+        let mut total_duration = if ctx.u_data.pyfa_damage_compatibility {
+            PValue::ZERO
+        } else {
+            PValue::SERVER_TICK_S
+        };
         if !rifd.specs_reactivation_delay {
             return Some(Self {
                 duration: total_duration,
@@ -479,7 +483,11 @@ impl SoftDts {
             && is_oattr_flag_set(ctx, calc, item_uid, ctx.ac().disallow_repeating_activation).unwrap_or(false)
         {
             soft_dt_regular = Some(CycleSoftDtFull {
-                duration: PValue::SERVER_TICK_S,
+                duration: if ctx.u_data.pyfa_damage_compatibility {
+                    PValue::ZERO
+                } else {
+                    PValue::SERVER_TICK_S
+                },
                 reasons: CycleSoftDtReasons { reload: false },
             });
         }

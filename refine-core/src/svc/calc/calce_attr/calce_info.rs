@@ -136,7 +136,11 @@ impl Calc {
                 affection.affectors,
             );
         }
-        let mut dogma_attr_info = accumulator.apply_dogma_mods(base_attr_info, attr.hig);
+        let mut dogma_attr_info = accumulator.apply_dogma_mods(
+            base_attr_info,
+            attr.hig,
+            ctx.u_data.pyfa_fitting_rounding && !attr.penalizable && ctx.ac().limited_precision.contains(&attr_rid),
+        );
         // Lower value limit
         if let Some(limiter_attr_rid) = attr.min_attr_rid
             && let Ok(limiter_val) = self.get_item_attr_rfull(ctx, item_uid, limiter_attr_rid)

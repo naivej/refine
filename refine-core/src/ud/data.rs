@@ -11,6 +11,7 @@ use crate::{
 pub(crate) struct UData {
     pub(crate) r_data: RcData,
     pub(crate) pyfa_fitting_rounding: bool,
+    pub(crate) pyfa_damage_compatibility: bool,
     pub(crate) fleets: UFleets,
     pub(crate) fits: UFits,
     pub(crate) sw_effects: RSet<UItemId>,
@@ -26,10 +27,11 @@ pub(crate) struct UData {
     pub(crate) default_rearm_minions: RearmMinion,
 }
 impl UData {
-    pub(crate) fn new(r_data: RcData, pyfa_fitting_rounding: bool) -> Self {
+    pub(crate) fn new(r_data: RcData, pyfa_fitting_rounding: bool, pyfa_damage_compatibility: bool) -> Self {
         Self {
             r_data,
             pyfa_fitting_rounding,
+            pyfa_damage_compatibility,
             fleets: UFleets::new(5),
             fits: UFits::new(50),
             sw_effects: RSet::new(),
@@ -70,6 +72,7 @@ mod debug {
                 // Not checked
                 r_data: _,
                 pyfa_fitting_rounding: _,
+                pyfa_damage_compatibility: _,
                 sec_zone: _,
                 default_incoming_dps: _,
                 default_spool: _,

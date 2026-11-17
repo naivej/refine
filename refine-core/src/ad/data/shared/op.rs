@@ -16,4 +16,7 @@ pub enum AOp {
     PostPerc,
     PostPercImmune,
     PostAssign,
+    /// Apply post-percent stacking when the target attribute is penalizable, including ship
+    /// sources.
+    PostPercForcePenalty,
 }
