@@ -2,6 +2,7 @@ use crate::{
     Charge, Count, FitId, ItemCommon, ItemSpoolInfo, ModRack, ModuleState, OptionalReload, RackPos, Spool,
     api::ItemSealed,
     misc::InfCount,
+    pyfa_graph::RemoteRepairSchedule,
     sol::SolCore,
     ud::{UItemId, UModule},
 };
@@ -71,6 +72,18 @@ impl<'s> Module<'s> {
             self.sol
                 .svc
                 .get_item_pyfa_simple_shield_cycle(&mut self.sol.reuse.cseq_cache, &self.sol.u_data, self.uid);
+        self.sol.internal_tx_rollback(savepoint);
+        result
+    }
+    /// Return the fully charged cycle and reload of a repeating ancillary shield repair.
+    pub fn get_pyfa_ancillary_shield_schedule(&mut self) -> Option<RemoteRepairSchedule> {
+        let savepoint = self.sol.internal_active_stat_prepare(self.uid);
+        self.sol.reuse.cseq_cache.clear();
+        let result = self.sol.svc.get_item_pyfa_ancillary_shield_schedule(
+            &mut self.sol.reuse.cseq_cache,
+            &self.sol.u_data,
+            self.uid,
+        );
         self.sol.internal_tx_rollback(savepoint);
         result
     }

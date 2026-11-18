@@ -1,5 +1,6 @@
 use crate::{
     PValue,
+    pyfa_graph::RemoteRepairSchedule,
     stats::{StatOutRepItemKinds, StatOutReps, StatTimeOptions},
     svc::{Svc, SvcCtx, cycle::CseqCache, err::IntStatItemError, vast::Vast},
     ud::{UData, UFitId, UItemId},
@@ -72,6 +73,20 @@ impl Svc {
             &SvcCtx::new(u_data, &self.eff_projs),
             &mut self.calc,
             item_uid,
+        )
+    }
+    pub(crate) fn get_item_pyfa_ancillary_shield_schedule(
+        &mut self,
+        cseq_cache: &mut CseqCache,
+        u_data: &UData,
+        item_uid: UItemId,
+    ) -> Option<RemoteRepairSchedule> {
+        Vast::get_item_pyfa_shield_schedule(
+            cseq_cache,
+            &SvcCtx::new(u_data, &self.eff_projs),
+            &mut self.calc,
+            item_uid,
+            true,
         )
     }
     pub(crate) fn get_stat_fits_outgoing_cps(

@@ -1,11 +1,13 @@
 use crate::{
-    Count, PValue,
+    Count, OptionalReload, PValue, UnitInterval,
+    ad::AEffectId,
     nd::NEffectGeneralOutputGetter,
+    pyfa_graph::{RemoteRepairCycle, RemoteRepairReload, RemoteRepairSchedule},
     rd::{REffect, REffectProjOpcSpec},
-    stats::{StatCritOptions, StatOutReps, StatTimeOptions},
+    stats::{StatCritOptions, StatOutReps, StatTimeOptions, StatTimeOptionsSim},
     svc::{
         Calc, SvcCtx, Vast,
-        cycle::{CseqCache, CycleSeq, CyclingOptions, get_item_cseq_map},
+        cycle::{CseqCache, CycleSeq, CyclingOptions, GetMainDuration, get_item_cseq_map},
         err::IntStatItemError,
         vast::{
             aggr::{AggrIterData, SeqAccum, aggr_proj_burst, aggr_proj_iter, aggr_proj_looped, aggr_proj_time},
@@ -67,12 +69,27 @@ impl Vast {
         calc: &mut Calc,
         item_uid: UItemId,
     ) -> Option<(f64, f64)> {
+        let schedule = Self::get_item_pyfa_shield_schedule(cseq_cache, ctx, calc, item_uid, false)?;
+        Some((schedule.cycle.duration_s, schedule.cycle.amount_hp))
+    }
+
+    /// Resolve an immediate ordinary cycle or a fully charged, equal-cycle ancillary magazine.
+    pub(in crate::svc) fn get_item_pyfa_shield_schedule(
+        cseq_cache: &mut CseqCache,
+        ctx: &SvcCtx,
+        calc: &mut Calc,
+        item_uid: UItemId,
+        ancillary: bool,
+    ) -> Option<RemoteRepairSchedule> {
         let cseq_map = get_item_cseq_map(
             cseq_cache,
             ctx,
             calc,
             item_uid,
-            CyclingOptions::from_time_options(StatTimeOptions::Sim(Default::default())),
+            CyclingOptions::from_time_options(StatTimeOptions::Sim(StatTimeOptionsSim {
+                optional_reloads: ancillary.then_some(OptionalReload::OnEmpty),
+                ..Default::default()
+            })),
         )?;
         let mut result = None;
         for (effect_rid, cseq) in cseq_map.iter() {
@@ -80,12 +97,32 @@ impl Vast {
             let Some(ospec) = effect.outgoing_shield_rep else {
                 continue;
             };
-            let CycleSeq::LoopSin(cycle) = cseq else {
-                return None;
+            let reload = match cseq {
+                CycleSeq::LoopSin(cycle)
+                    if !ancillary
+                        && cycle.hard_dt.is_none()
+                        && cycle.data.soft_dt.is_none()
+                        && cycle.data.active.chargedness.is_none() =>
+                {
+                    None
+                }
+                CycleSeq::LoopLimSin(cycle)
+                    if ancillary
+                        && effect.aid == AEffectId::SHIP_MOD_ANCILLARY_REMOTE_SHIELD_BOOSTER
+                        && cycle.hard_dt.is_none()
+                        && cycle.p1_data.soft_dt.is_none()
+                        && cycle.p1_data.active.duration == cycle.p2_data.active.duration
+                        && cycle.p1_data.active.chargedness == Some(UnitInterval::ONE)
+                        && cycle.p2_data.active.chargedness == Some(UnitInterval::ONE) =>
+                {
+                    cycle.p2_data.soft_dt.filter(|dt| dt.reasons.reload)?;
+                    Some(RemoteRepairReload {
+                        magazine_cycles: cycle.p1_repeat_count.into_u32().checked_add(1)?,
+                        duration_s: (cycle.p2_data.get_main_duration() - cycle.p2_data.active.duration).into_f64(),
+                    })
+                }
+                _ => return None,
             };
-            if cycle.hard_dt.is_some() || cycle.data.soft_dt.is_some() || cycle.data.active.chargedness.is_some() {
-                return None;
-            }
             let data @ AggrIterData::Regular(_) = aggr_proj_iter(
                 ctx,
                 calc,
@@ -108,7 +145,13 @@ impl Vast {
                 return None;
             }
             let amount = first.output.get_immediate_instance()?;
-            result = Some((first.cycle_duration.into_f64(), amount.into_f64()));
+            result = Some(RemoteRepairSchedule {
+                cycle: RemoteRepairCycle {
+                    duration_s: first.cycle_duration.into_f64(),
+                    amount_hp: amount.into_f64(),
+                },
+                reload,
+            });
         }
         result
     }

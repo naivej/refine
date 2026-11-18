@@ -393,11 +393,24 @@ pub enum RemoteRepairTimeSeries {
     Total,
 }
 
-/// A single immediate, uncharged, continuously repeating shield repair cycle.
+/// A single immediate shield repair cycle.
 #[derive(Clone, Copy, Debug)]
 pub struct RemoteRepairCycle {
     pub duration_s: f64,
     pub amount_hp: f64,
+}
+
+/// A reload after a fixed number of equal repair cycles.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteRepairReload {
+    pub magazine_cycles: u32,
+    pub duration_s: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteRepairSchedule {
+    pub cycle: RemoteRepairCycle,
+    pub reload: Option<RemoteRepairReload>,
 }
 
 #[derive(Clone, Debug)]
@@ -417,6 +430,25 @@ pub enum RemoteRepairTimeError {
 /// `application` is the graph-rounded range/lock multiplier resolved from native projection.
 pub fn remote_repair_time_graph(
     cycle: Option<RemoteRepairCycle>,
+    application: f64,
+    series: RemoteRepairTimeSeries,
+    times: &[f64],
+    plot_range: Option<[f64; 2]>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<RemoteRepairTimeGraph, RemoteRepairTimeError> {
+    remote_repair_schedule_graph(
+        cycle.map(|cycle| RemoteRepairSchedule { cycle, reload: None }),
+        application,
+        series,
+        times,
+        plot_range,
+        is_cancelled,
+    )
+}
+
+/// Plot an immediate shield repair with optional periodic magazine reloads.
+pub fn remote_repair_schedule_graph(
+    schedule: Option<RemoteRepairSchedule>,
     application: f64,
     series: RemoteRepairTimeSeries,
     times: &[f64],
@@ -444,12 +476,18 @@ pub fn remote_repair_time_graph(
         .unwrap_or(0.0)
         .max(plot_range.map(|range| range[1]).unwrap_or(0.0));
     let mut events = Vec::new();
-    if let Some(cycle) = cycle {
+    let mut plot_event_limit = None;
+    if let Some(RemoteRepairSchedule { cycle, reload }) = schedule {
         if !cycle.duration_s.is_finite()
             || cycle.duration_s <= 0.0
             || !cycle.amount_hp.is_finite()
             || cycle.amount_hp <= 0.0
         {
+            return Err(Error::InvalidInput);
+        }
+        if reload.is_some_and(|reload| {
+            reload.magazine_cycles == 0 || !reload.duration_s.is_finite() || reload.duration_s <= 0.0
+        }) {
             return Err(Error::InvalidInput);
         }
         if series == RemoteRepairTimeSeries::Rps {
@@ -458,9 +496,36 @@ pub fn remote_repair_time_graph(
                 return Err(Error::InvalidInput);
             }
             events.push((0.0, rate));
+            if let Some(reload) = reload {
+                plot_event_limit = plot_range.map(|_| 1);
+                let mut start = 0.0;
+                let last_cycle_offset = f64::from(reload.magazine_cycles - 1) * cycle.duration_s;
+                let magazine_duration = f64::from(reload.magazine_cycles) * cycle.duration_s;
+                // The time cache includes one activation after the horizon. A gap
+                // becomes visible when that or an earlier activation follows a reload.
+                while start + last_cycle_offset <= horizon {
+                    if is_cancelled() {
+                        return Err(Error::Cancelled);
+                    }
+                    if events.len() + 2 > MAX_EVENTS {
+                        return Err(Error::PointLimit);
+                    }
+                    let reload_start = start + magazine_duration;
+                    let next_start = reload_start + reload.duration_s;
+                    if !next_start.is_finite() || reload_start <= start || next_start <= reload_start {
+                        return Err(Error::InvalidInput);
+                    }
+                    events.extend([(reload_start, 0.0), (next_start, rate)]);
+                    if plot_range.is_some_and(|[_, end]| start + last_cycle_offset <= end) {
+                        plot_event_limit = Some(events.len());
+                    }
+                    start = next_start;
+                }
+            }
         } else {
             let mut time = 0.0;
             let mut cumulative = 0.0;
+            let mut cycles_since_reload = 0;
             loop {
                 if is_cancelled() {
                     return Err(Error::Cancelled);
@@ -476,7 +541,14 @@ pub fn remote_repair_time_graph(
                 if time > horizon {
                     break;
                 }
-                let next = time + cycle.duration_s;
+                let mut next = time + cycle.duration_s;
+                if let Some(reload) = reload {
+                    cycles_since_reload += 1;
+                    if cycles_since_reload == reload.magazine_cycles {
+                        next += reload.duration_s;
+                        cycles_since_reload = 0;
+                    }
+                }
                 if !next.is_finite() || next <= time {
                     return Err(Error::InvalidInput);
                 }
@@ -506,7 +578,7 @@ pub fn remote_repair_time_graph(
         let mut points = Vec::new();
         let mut current_value = None;
         let mut current_time = None;
-        for &(time, value) in &events {
+        for &(time, value) in &events[..plot_event_limit.unwrap_or(events.len())] {
             if is_cancelled() {
                 return Err(Error::Cancelled);
             }
@@ -525,8 +597,9 @@ pub fn remote_repair_time_graph(
                 if previous_value != Some(value) {
                     points.push((time, value));
                 }
-                // Pyfa builds through the first event strictly after the plot end.
-                if time > max_time {
+                // Total repair has one activation beyond the plot end. A rate
+                // gap can have two visible boundaries from that activation.
+                if time > max_time && plot_event_limit.is_none() {
                     break;
                 }
                 continue;
@@ -878,7 +951,10 @@ mod simulated_capacitor_tests {
 mod remote_repair_time_tests {
     use std::cell::Cell;
 
-    use super::{RemoteRepairCycle, RemoteRepairTimeError, RemoteRepairTimeSeries, remote_repair_time_graph};
+    use super::{
+        RemoteRepairCycle, RemoteRepairReload, RemoteRepairSchedule, RemoteRepairTimeError, RemoteRepairTimeSeries,
+        remote_repair_schedule_graph, remote_repair_time_graph,
+    };
 
     fn cycle() -> Option<RemoteRepairCycle> {
         Some(RemoteRepairCycle {
@@ -945,5 +1021,46 @@ mod remote_repair_time_tests {
         });
         assert!(matches!(result, Err(RemoteRepairTimeError::Cancelled)));
         assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn distant_marker_does_not_extend_the_ancillary_rate_plot_past_its_horizon() {
+        let schedule = RemoteRepairSchedule {
+            cycle: RemoteRepairCycle {
+                duration_s: 8.0,
+                amount_hp: 950.0,
+            },
+            reload: Some(RemoteRepairReload {
+                magazine_cycles: 7,
+                duration_s: 60.0,
+            }),
+        };
+        let graph = remote_repair_schedule_graph(
+            Some(schedule),
+            1.0,
+            RemoteRepairTimeSeries::Rps,
+            &[48.0, 56.0, 64.0, 116.0, 180.0],
+            Some([7.999999, 8.000001]),
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            graph.markers,
+            [(48.0, 118.75), (56.0, 0.0), (64.0, 0.0), (116.0, 118.75), (180.0, 0.0)]
+        );
+        assert_eq!(graph.plot.unwrap(), [(8.000001, 118.75)]);
+        let before_gap = remote_repair_schedule_graph(
+            Some(schedule),
+            1.0,
+            RemoteRepairTimeSeries::Rps,
+            &[2500.0],
+            Some([48.1, 50.0]),
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(
+            before_gap.plot.unwrap(),
+            [(48.1, 118.75), (56.0, 118.75), (56.0, 0.0), (50.0, 0.0)]
+        );
     }
 }
