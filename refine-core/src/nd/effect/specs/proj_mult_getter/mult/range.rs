@@ -193,11 +193,19 @@ impl MissileFlight {
         }
         // Pyfa Module.missileMaxRangeData rounds flight time before splitting it into ticks.
         let duration = pyfa_missile_round(self.flight_duration).into_f64();
-        let acceleration_s = self.mass.into_f64() * self.agility.into_f64() / 1_000_000.0;
+        self.pyfa_range_mult_for_duration(overview_m, ship_radius_m, duration)
+    }
+
+    fn pyfa_range_mult_for_duration(&self, overview_m: f64, ship_radius_m: f64, duration: f64) -> PValue {
+        let speed = self.max_velocity.into_f64();
         let range_at = |tick: f64| {
-            let accelerating = tick.min(acceleration_s);
-            let travel = speed / 2.0 * accelerating + speed * (tick - accelerating);
-            (travel - ship_radius_m).max(0.0)
+            crate::pyfa_application_profile::pyfa_tick_range(
+                speed,
+                self.mass.into_f64(),
+                self.agility.into_f64(),
+                ship_radius_m,
+                tick,
+            )
         };
         if overview_m <= range_at(duration.floor()) {
             PValue::ONE

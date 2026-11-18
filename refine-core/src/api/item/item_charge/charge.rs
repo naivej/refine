@@ -13,6 +13,27 @@ pub struct Charge<'s> {
     pub(super) uid: UItemId,
 }
 impl<'s> Charge<'s> {
+    /// Return the loaded-charge dogma coefficient used by Pyfa Application Profile.
+    /// Zero-base attributes use the same modifiers with a temporary base of one.
+    pub fn pyfa_ammo_coefficient(
+        &mut self,
+        attr_id: &crate::AttrId,
+    ) -> Result<crate::Value, crate::err::ItemAttrGetError> {
+        let item_uid = self.uid;
+        let sol = &mut self.sol;
+        let attr_aid = attr_id.into_aid();
+        let Some(attr_rid) = sol.u_data.r_data.get_attr_rid_by_aid(&attr_aid) else {
+            return Err(crate::err::basic::AttrFoundError { attr_id: *attr_id }.into());
+        };
+        sol.svc
+            .pyfa_ammo_coefficient(&sol.u_data, item_uid, attr_rid)
+            .map_err(|error| {
+                crate::err::basic::ItemLoadedError {
+                    item_id: sol.u_data.items.ext_id_by_int_id(error.item_uid),
+                }
+                .into()
+            })
+    }
     pub fn get_fit_id(&self) -> FitId {
         let fit_uid = get_u_charge(self.sol, self.uid).get_fit_uid();
         self.sol.u_data.fits.ext_id_by_int_id(fit_uid)

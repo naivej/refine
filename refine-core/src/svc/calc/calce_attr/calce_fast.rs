@@ -327,7 +327,7 @@ impl Calc {
         attr_rid: RAttrId,
     ) -> CalcAttrVals {
         // This method assumes that item is loaded (= has attr data)
-        let mut cval = self.calc_item_attr_val(ctx, item_uid, attr_rid, |_| true);
+        let mut cval = self.calc_item_attr_val(ctx, item_uid, attr_rid, |_| true, None);
         let item_attr_data = self.attrs.get_item_attr_data_mut(item_uid).unwrap();
         let postproc = item_attr_data.set_value_and_get_postproc(attr_rid, cval);
         if PP && let Some(postproc) = postproc {
@@ -347,7 +347,7 @@ impl Calc {
     {
         // Unlike neighboring methods, this does not assume item is loaded and checks it
         let postproc = self.get_item_data_with_err(item_uid)?.get_postproc(attr_rid);
-        let mut cval = self.calc_item_attr_val(ctx, item_uid, attr_rid, mod_filter);
+        let mut cval = self.calc_item_attr_val(ctx, item_uid, attr_rid, mod_filter, None);
         if let Some(postproc) = postproc {
             cval = postproc.fast(self, ctx, item_uid, cval);
         }
@@ -450,13 +450,14 @@ impl Calc {
         item_uid: UItemId,
         attr_rid: RAttrId,
         mod_filter: F,
+        base_override: Option<Value>,
     ) -> CalcAttrVals
     where
         F: Fn(&EffectSpec) -> bool,
     {
         let item = ctx.u_data.items.get(item_uid);
         let attr = ctx.u_data.r_data.get_attr_by_rid(attr_rid);
-        let base_val = self.calc_item_base_attr_value(ctx, item_uid, item, attr);
+        let base_val = base_override.unwrap_or_else(|| self.calc_item_base_attr_value(ctx, item_uid, item, attr));
         let mut accumulator = self
             .reuse
             .accums
@@ -491,6 +492,23 @@ impl Calc {
             dogma: dogma_val,
             extra: extra_val,
         }
+    }
+    pub(crate) fn pyfa_ammo_coefficient(
+        &mut self,
+        ctx: &SvcCtx,
+        item_uid: UItemId,
+        attr_rid: RAttrId,
+    ) -> Result<Value, UItemLoadedError> {
+        let ordinary = self.get_item_attr_rfull(ctx, item_uid, attr_rid)?;
+        let base = ordinary.base.into_value();
+        if base != Value::ZERO {
+            return Ok(ordinary.dogma / base);
+        }
+        // A hypothetical base only for this calculation. Do not replace the charge
+        // or cache the hypothetical value on the real item.
+        Ok(self
+            .calc_item_attr_val(ctx, item_uid, attr_rid, |_| true, Some(Value::ONE))
+            .dogma)
     }
     fn calc_item_base_attr_value(&mut self, ctx: &SvcCtx, item_uid: UItemId, item: &UItem, attr: &RAttr) -> Value {
         let attr_consts = ctx.ac();

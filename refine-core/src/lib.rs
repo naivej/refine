@@ -113,6 +113,7 @@ pub mod err;
 mod misc;
 mod nd;
 mod num;
+pub mod pyfa_application_profile;
 pub mod pyfa_graph;
 mod rd;
 mod sol;

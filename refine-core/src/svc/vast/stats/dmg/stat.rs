@@ -46,17 +46,59 @@ impl StatDmg {
 
 impl StatDmgEntry {
     fn after_target_resists(&self, resists: StatResistsLayer) -> Self {
-        let resonance = |resistance: UnitInterval| PValue::from_f64_unchecked(1.0 - resistance.into_f64());
-        Self {
-            em: self.em * resonance(resists.em),
-            thermal: self.thermal * resonance(resists.thermal),
-            kinetic: self.kinetic * resonance(resists.kinetic),
-            explosive: self.explosive * resonance(resists.explosive),
-            breacher: StatDmgEntryBreacher {
+        Self::from_dmgs(
+            apply_layer_resists(
+                DmgKinds {
+                    em: self.em,
+                    thermal: self.thermal,
+                    kinetic: self.kinetic,
+                    explosive: self.explosive,
+                },
+                resists,
+            ),
+            StatDmgEntryBreacher {
                 absolute_max: self.breacher.absolute_max,
                 relative_max: self.breacher.relative_max,
             },
+        )
+    }
+}
+
+impl StatDmgApplied {
+    /// Apply the target layer's resistances after range and application.
+    /// Already-resolved breacher damage bypasses the target layer.
+    pub fn after_target_resists(&self, resists: StatResistsLayer) -> Self {
+        Self {
+            dps: self.dps.after_target_resists(resists),
+            volley: self.volley.after_target_resists(resists),
         }
+    }
+}
+
+impl StatDmgEntryApplied {
+    fn after_target_resists(&self, resists: StatResistsLayer) -> Self {
+        Self::from_dmgs(
+            apply_layer_resists(
+                DmgKinds {
+                    em: self.em,
+                    thermal: self.thermal,
+                    kinetic: self.kinetic,
+                    explosive: self.explosive,
+                },
+                resists,
+            ),
+            self.breacher,
+        )
+    }
+}
+
+fn apply_layer_resists(damage: DmgKinds<PValue>, resists: StatResistsLayer) -> DmgKinds<PValue> {
+    let resonance = |resistance: UnitInterval| PValue::from_f64_unchecked(1.0 - resistance.into_f64());
+    DmgKinds {
+        em: damage.em * resonance(resists.em),
+        thermal: damage.thermal * resonance(resists.thermal),
+        kinetic: damage.kinetic * resonance(resists.kinetic),
+        explosive: damage.explosive * resonance(resists.explosive),
     }
 }
 
@@ -129,5 +171,34 @@ mod tests {
         };
         assert_eq!(channels(result.dps), [16.0, 15.0, 12.0, 0.0, 4.0, 0.25]);
         assert_eq!(channels(result.volley), [32.0, 30.0, 24.0, 0.0, 8.0, 0.5]);
+    }
+
+    #[test]
+    fn applied_layer_resistances_preserve_already_resolved_breacher_damage() {
+        let entry = |values: [f64; 5]| {
+            let [em, thermal, kinetic, explosive, breacher] = values.map(PValue::from_f64_unchecked);
+            StatDmgEntryApplied {
+                em,
+                thermal,
+                kinetic,
+                explosive,
+                breacher,
+            }
+        };
+        let applied = StatDmgApplied {
+            dps: entry([4.0, 8.0, 12.0, 16.0, 2.0]),
+            volley: entry([8.0, 16.0, 24.0, 32.0, 4.0]),
+        };
+        let adjusted = applied.after_target_resists(StatResistsLayer {
+            em: UnitInterval::from_f64_clamped(0.5),
+            thermal: UnitInterval::ONE,
+            kinetic: UnitInterval::ZERO,
+            explosive: UnitInterval::from_f64_clamped(0.25),
+        });
+        let values = |entry: StatDmgEntryApplied| {
+            [entry.em, entry.thermal, entry.kinetic, entry.explosive, entry.breacher].map(PValue::into_f64)
+        };
+        assert_eq!(values(adjusted.dps), [2.0, 0.0, 12.0, 12.0, 2.0]);
+        assert_eq!(values(adjusted.volley), [4.0, 0.0, 24.0, 24.0, 4.0]);
     }
 }

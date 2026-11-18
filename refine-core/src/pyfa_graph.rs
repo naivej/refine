@@ -32,6 +32,7 @@ pub struct PyfaEwarSource {
 pub enum PyfaEwarKind {
     Web,
     Neutralizer,
+    LockRangeDamp,
 }
 
 /// Native fit attributes resolved once for up to two active modules.
@@ -51,6 +52,7 @@ impl PyfaEwarPrepared {
         let lock_range_m = fit.stats().get_stat_lock_range().ok()?.into_f64();
         let (rack, type_id) = match kind {
             PyfaEwarKind::Web => (ModRack::Mid, 527),
+            PyfaEwarKind::LockRangeDamp => (ModRack::Mid, 1969),
             PyfaEwarKind::Neutralizer => (ModRack::High, 12267),
         };
         let blank = PyfaEwarSource {
@@ -81,7 +83,11 @@ impl PyfaEwarPrepared {
             sources[count] = PyfaEwarSource {
                 optimal_m: attr(54)?,
                 falloff_m: attr(2044)?,
-                strength: attr(if kind == PyfaEwarKind::Web { 20 } else { 97 })?,
+                strength: attr(match kind {
+                    PyfaEwarKind::Web => 20,
+                    PyfaEwarKind::Neutralizer => 97,
+                    PyfaEwarKind::LockRangeDamp => 309,
+                })?,
                 cycle_s: attr(73)? / 1000.0,
             };
             count += 1;
@@ -97,7 +103,7 @@ impl PyfaEwarPrepared {
     pub fn sample(&self, distance_m: f64, ignore_lock_range: bool, resistance: f64) -> Option<f64> {
         let sources = &self.sources[..self.count];
         match self.kind {
-            PyfaEwarKind::Web => {
+            PyfaEwarKind::Web | PyfaEwarKind::LockRangeDamp => {
                 pyfa_ewar_web_percentage(sources, distance_m, self.lock_range_m, ignore_lock_range, resistance)
             }
             PyfaEwarKind::Neutralizer => {

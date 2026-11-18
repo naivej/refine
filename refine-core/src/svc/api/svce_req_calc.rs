@@ -19,6 +19,15 @@ impl Svc {
         self.calc
             .get_item_attr_rfull(&SvcCtx::new(u_data, &self.eff_projs), item_uid, attr_rid)
     }
+    pub(crate) fn pyfa_ammo_coefficient(
+        &mut self,
+        u_data: &UData,
+        item_uid: UItemId,
+        attr_rid: RAttrId,
+    ) -> Result<Value, UItemLoadedError> {
+        self.calc
+            .pyfa_ammo_coefficient(&SvcCtx::new(u_data, &self.eff_projs), item_uid, attr_rid)
+    }
     pub(crate) fn iter_item_attr_vals(
         &mut self,
         u_data: &UData,
