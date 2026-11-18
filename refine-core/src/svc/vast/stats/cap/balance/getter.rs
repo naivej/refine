@@ -51,7 +51,15 @@ impl Vast {
             balance -= get_cap_consumed(cseq_cache, ctx, calc, time_options, fit_data);
         }
         if src_kinds.incoming_transfers {
-            balance += get_incoming_cap_transfers(cseq_cache, ctx, calc, time_options, item_uid, self);
+            balance += get_incoming_cap_transfers(
+                cseq_cache,
+                ctx,
+                calc,
+                time_options,
+                item_uid,
+                self,
+                src_kinds.uncapped_incoming_transfers,
+            );
         }
         if src_kinds.incoming_neuts {
             balance -= get_incoming_neuts(cseq_cache, ctx, calc, time_options, item_uid, self);
@@ -234,6 +242,7 @@ fn get_incoming_cap_transfers(
     time_options: StatTimeOptions,
     cap_item_uid: UItemId,
     vast: &Vast,
+    uncapped: bool,
 ) -> PValue {
     let mut cps = PValue::ZERO;
     let cycling_options = CyclingOptions::from_time_options(time_options);
@@ -245,6 +254,11 @@ fn get_incoming_cap_transfers(
             continue;
         };
         for (&effect_rid, ospec) in item_data.iter() {
+            let mut adjusted_ospec = *ospec;
+            if uncapped {
+                adjusted_ospec.remote_limit_attr_id = None;
+            }
+            let ospec = &adjusted_ospec;
             let Some(cseq) = cseq_map.get(effect_rid) else {
                 continue;
             };

@@ -52,6 +52,7 @@ impl<'s> Fit<'s> {
             cap_injectors: true,
             nosfs: Some(StatCapBlcNosfsOptionsInt::default()),
             consumers: true,
+            uncapped_incoming_transfers: false,
             incoming_transfers: true,
             incoming_neuts: true,
         };
@@ -60,6 +61,7 @@ impl<'s> Fit<'s> {
             cap_injectors: true,
             nosfs: Some(StatCapBlcNosfsOptionsInt::default()),
             consumers: false,
+            uncapped_incoming_transfers: false,
             incoming_transfers: true,
             incoming_neuts: false,
         };
@@ -68,6 +70,7 @@ impl<'s> Fit<'s> {
             cap_injectors: false,
             nosfs: None,
             consumers: true,
+            uncapped_incoming_transfers: false,
             incoming_transfers: false,
             incoming_neuts: true,
         };

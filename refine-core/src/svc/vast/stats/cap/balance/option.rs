@@ -24,6 +24,9 @@ pub struct StatCapBlcSrcKinds<I = ItemId> {
     consumers: DefOption = DefOption::Default,
     #[cfg_attr(feature = "serde", serde(default))]
     incoming_transfers: DefOption = DefOption::Default,
+    /// Disable the per-cycle target capacity limit for incoming transfers.
+    #[cfg_attr(feature = "serde", serde(default))]
+    uncapped_incoming_transfers: bool = false,
     #[cfg_attr(feature = "serde", serde(default))]
     incoming_neuts: DefOption = DefOption::Default,
 }
@@ -55,6 +58,12 @@ impl<I> StatCapBlcSrcKinds<I> {
     }
     pub fn with_incoming_transfers(mut self, enabled: bool) -> Self {
         self.incoming_transfers = enabled.into();
+        self
+    }
+    /// Report full incoming transfer output, as Pyfa does, even if one cycle
+    /// exceeds the recipient's total capacitor capacity. Defaults to false.
+    pub fn with_uncapped_incoming_transfers(mut self, enabled: bool) -> Self {
+        self.uncapped_incoming_transfers = enabled;
         self
     }
     pub fn with_incoming_neuts(mut self, enabled: bool) -> Self {
@@ -110,6 +119,7 @@ impl<I1> StatCapBlcSrcKinds<I1> {
             },
             consumers: self.consumers,
             incoming_transfers: self.incoming_transfers,
+            uncapped_incoming_transfers: self.uncapped_incoming_transfers,
             incoming_neuts: self.incoming_neuts,
         })
     }
@@ -125,6 +135,7 @@ pub(crate) struct StatCapBlcSrcKindsInt {
     pub(crate) nosfs: Option<StatCapBlcNosfsOptionsInt>,
     pub(crate) consumers: bool,
     pub(crate) incoming_transfers: bool,
+    pub(crate) uncapped_incoming_transfers: bool,
     pub(crate) incoming_neuts: bool,
 }
 impl StatCapBlcSrcKindsInt {
@@ -136,6 +147,7 @@ impl StatCapBlcSrcKindsInt {
             nosfs,
             consumers,
             incoming_transfers,
+            uncapped_incoming_transfers,
             incoming_neuts,
         } = pub_opts;
         Ok(Self {
@@ -147,6 +159,7 @@ impl StatCapBlcSrcKindsInt {
             },
             consumers: consumers.is_enabled(*default),
             incoming_transfers: incoming_transfers.is_enabled(*default),
+            uncapped_incoming_transfers: *uncapped_incoming_transfers,
             incoming_neuts: incoming_neuts.is_enabled(*default),
         })
     }
