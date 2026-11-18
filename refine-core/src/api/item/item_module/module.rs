@@ -62,6 +62,18 @@ impl<'s> Module<'s> {
         self.sol.internal_tx_rollback(savepoint);
         result
     }
+    /// Return the immediate output and duration of an ordinary uninterrupted shield-repair cycle.
+    /// Returns None for unsupported cycle shapes or outputs.
+    pub fn get_pyfa_simple_shield_cycle(&mut self) -> Option<(f64, f64)> {
+        let savepoint = self.sol.internal_active_stat_prepare(self.uid);
+        self.sol.reuse.cseq_cache.clear();
+        let result =
+            self.sol
+                .svc
+                .get_item_pyfa_simple_shield_cycle(&mut self.sol.reuse.cseq_cache, &self.sol.u_data, self.uid);
+        self.sol.internal_tx_rollback(savepoint);
+        result
+    }
     pub fn get_spool_cycle_count(&mut self) -> Option<ItemSpoolInfo> {
         self.sol.svc.get_effect_spool_cycle_count(&self.sol.u_data, self.uid)
     }

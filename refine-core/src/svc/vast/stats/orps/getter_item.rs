@@ -1,14 +1,14 @@
 use crate::{
-    PValue,
+    Count, PValue,
     nd::NEffectGeneralOutputGetter,
     rd::{REffect, REffectProjOpcSpec},
     stats::{StatCritOptions, StatOutReps, StatTimeOptions},
     svc::{
         Calc, SvcCtx, Vast,
-        cycle::{CseqCache, CyclingOptions, get_item_cseq_map},
+        cycle::{CseqCache, CycleSeq, CyclingOptions, get_item_cseq_map},
         err::IntStatItemError,
         vast::{
-            aggr::{SeqAccum, aggr_proj_burst, aggr_proj_looped, aggr_proj_time},
+            aggr::{AggrIterData, SeqAccum, aggr_proj_burst, aggr_proj_iter, aggr_proj_looped, aggr_proj_time},
             stats::item_checks::check_drone_fighter_module,
         },
     },
@@ -55,6 +55,62 @@ impl Vast {
             ),
         };
         Ok(orps)
+    }
+}
+
+impl Vast {
+    /// A single, immediate, uncharged, uninterrupted repeating shield repair cycle.
+    /// Other cycle shapes are intentionally outside this narrow graph trial.
+    pub(in crate::svc) fn get_item_pyfa_simple_shield_cycle(
+        cseq_cache: &mut CseqCache,
+        ctx: &SvcCtx,
+        calc: &mut Calc,
+        item_uid: UItemId,
+    ) -> Option<(f64, f64)> {
+        let cseq_map = get_item_cseq_map(
+            cseq_cache,
+            ctx,
+            calc,
+            item_uid,
+            CyclingOptions::from_time_options(StatTimeOptions::Sim(Default::default())),
+        )?;
+        let mut result = None;
+        for (effect_rid, cseq) in cseq_map.iter() {
+            let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
+            let Some(ospec) = effect.outgoing_shield_rep else {
+                continue;
+            };
+            let CycleSeq::LoopSin(cycle) = cseq else {
+                return None;
+            };
+            if cycle.hard_dt.is_some() || cycle.data.soft_dt.is_some() || cycle.data.active.chargedness.is_some() {
+                return None;
+            }
+            let data @ AggrIterData::Regular(_) = aggr_proj_iter(
+                ctx,
+                calc,
+                item_uid,
+                effect,
+                cseq,
+                &ospec,
+                (),
+                StatCritOptions::default(),
+                None,
+            )?
+            else {
+                return None;
+            };
+            let first = data.iter().next()?;
+            if first.output_duration_limit.is_some()
+                || first.output.get_instance_count() != Count::ONE
+                || result.is_some()
+            {
+                return None;
+            }
+            let amount = first.output.get_immediate_instance()?;
+            result = Some((first.cycle_duration.into_f64(), amount.into_f64()));
+        }
+        result
     }
 }
 

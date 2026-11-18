@@ -15,6 +15,193 @@ const DRONE_RELOCK_DELAY_S: f64 = 3.0;
 const MAX_ECM_CYCLES: u32 = 4096;
 const MAX_SIMULATED_CAPACITOR_PLOT_POINTS: usize = 8500;
 
+/// A resolved active source for the Pyfa Electronic Warfare Stats graph.
+/// `strength` is a signed speed-factor percentage for a web, or an amount in GJ
+/// per cycle for a neutralizer. Resolve fitting effects and states before sampling.
+#[derive(Clone, Copy, Debug)]
+pub struct PyfaEwarSource {
+    pub optimal_m: f64,
+    pub falloff_m: f64,
+    pub strength: f64,
+    /// Average neutralizer cycle duration in seconds; ignored for webs.
+    pub cycle_s: f64,
+}
+
+/// The two registered EWAR series qualified by the Kestrel graph pilot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PyfaEwarKind {
+    Web,
+    Neutralizer,
+}
+
+/// Native fit attributes resolved once for up to two active modules.
+pub struct PyfaEwarPrepared {
+    sources: [PyfaEwarSource; 2],
+    count: usize,
+    pub lock_range_m: f64,
+    kind: PyfaEwarKind,
+}
+
+impl PyfaEwarPrepared {
+    /// Resolve fitted states and modified item attributes once before sampling.
+    pub fn from_fit(fit: &mut crate::Fit<'_>, kind: PyfaEwarKind) -> Option<Self> {
+        use lender::Lender;
+
+        use crate::{AttrId, EveAttrId, ItemCommon, ItemTypeId, ModRack, ModuleState};
+        let lock_range_m = fit.stats().get_stat_lock_range().ok()?.into_f64();
+        let (rack, type_id) = match kind {
+            PyfaEwarKind::Web => (ModRack::Mid, 527),
+            PyfaEwarKind::Neutralizer => (ModRack::High, 12267),
+        };
+        let blank = PyfaEwarSource {
+            optimal_m: 0.0,
+            falloff_m: 0.0,
+            strength: 0.0,
+            cycle_s: 1.0,
+        };
+        let mut sources = [blank; 2];
+        let mut count = 0;
+        let mut modules = fit.iter_modules(rack);
+        while let Some(mut module) = modules.next() {
+            if module.get_type_id() != ItemTypeId::from_i32(type_id) {
+                return None;
+            }
+            if module.get_state() != ModuleState::Active {
+                continue;
+            }
+            if count == sources.len() {
+                return None;
+            }
+            let mut attr = |id| {
+                module
+                    .get_attr(&AttrId::Eve(EveAttrId::from_i32(id)))
+                    .ok()
+                    .map(|v| v.modified.into_f64())
+            };
+            sources[count] = PyfaEwarSource {
+                optimal_m: attr(54)?,
+                falloff_m: attr(2044)?,
+                strength: attr(if kind == PyfaEwarKind::Web { 20 } else { 97 })?,
+                cycle_s: attr(73)? / 1000.0,
+            };
+            count += 1;
+        }
+        Some(Self {
+            sources,
+            count,
+            lock_range_m,
+            kind,
+        })
+    }
+
+    pub fn sample(&self, distance_m: f64, ignore_lock_range: bool, resistance: f64) -> Option<f64> {
+        let sources = &self.sources[..self.count];
+        match self.kind {
+            PyfaEwarKind::Web => {
+                pyfa_ewar_web_percentage(sources, distance_m, self.lock_range_m, ignore_lock_range, resistance)
+            }
+            PyfaEwarKind::Neutralizer => {
+                pyfa_ewar_neut_gj_per_s(sources, distance_m, self.lock_range_m, ignore_lock_range, resistance)
+            }
+        }
+    }
+}
+
+fn pyfa_ewar_range_factor(source: &PyfaEwarSource, distance_m: f64) -> f64 {
+    if source.falloff_m > 0.0 {
+        if distance_m > source.optimal_m + 3.0 * source.falloff_m {
+            return 0.0;
+        }
+        let ratio = (distance_m - source.optimal_m).max(0.0) / source.falloff_m;
+        let exponent = ratio.powf(std::hint::black_box(2.0));
+        std::hint::black_box(0.5_f64).powf(exponent)
+    } else if distance_m <= source.optimal_m {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// Sample at most two active webs in Pyfa's graph; applies resistance before stacking.
+pub fn pyfa_ewar_web_percentage(
+    sources: &[PyfaEwarSource],
+    distance_m: f64,
+    lock_range_m: f64,
+    ignore_lock_range: bool,
+    resistance: f64,
+) -> Option<f64> {
+    if sources.len() > 2
+        || !nonnegative(distance_m)
+        || !nonnegative(lock_range_m)
+        || !(0.0..=1.0).contains(&resistance)
+        || sources.iter().any(|s| {
+            !nonnegative(s.optimal_m) || !nonnegative(s.falloff_m) || !s.strength.is_finite() || s.strength > 0.0
+        })
+    {
+        return None;
+    }
+    // Pyfa's graph accepts km, then normalizes back to m before checking range.
+    let distance_m = distance_m / 1000.0 * 1000.0;
+    if !distance_m.is_finite() {
+        return None;
+    }
+    if !ignore_lock_range && distance_m > lock_range_m {
+        return Some(0.0);
+    }
+    let mut multipliers = [1.0_f64; 2];
+    let mut count = 0;
+    for s in sources {
+        let strength = s.strength * (1.0 - resistance) * pyfa_ewar_range_factor(s, distance_m);
+        let multiplier = 1.0 + strength / 100.0;
+        if multiplier < 1.0 {
+            multipliers[count] = multiplier;
+            count += 1;
+        }
+    }
+    if count == 2 && multipliers[0] > multipliers[1] {
+        multipliers.swap(0, 1);
+    }
+    let mut combined = 1.0;
+    for (i, multiplier) in multipliers[..count].iter().copied().enumerate() {
+        combined *= 1.0 + (multiplier - 1.0) * (-(i as f64).powi(2) / 7.1289).exp();
+    }
+    let value = (1.0 - combined) * 100.0;
+    value.is_finite().then_some(value)
+}
+
+/// Sample at most two active neutralizers without victim capacity or signature limits.
+pub fn pyfa_ewar_neut_gj_per_s(
+    sources: &[PyfaEwarSource],
+    distance_m: f64,
+    lock_range_m: f64,
+    ignore_lock_range: bool,
+    resistance: f64,
+) -> Option<f64> {
+    if sources.len() > 2
+        || !nonnegative(distance_m)
+        || !nonnegative(lock_range_m)
+        || !(0.0..=1.0).contains(&resistance)
+        || sources.iter().any(|s| {
+            !nonnegative(s.optimal_m) || !nonnegative(s.falloff_m) || !nonnegative(s.strength) || !positive(s.cycle_s)
+        })
+    {
+        return None;
+    }
+    let distance_m = distance_m / 1000.0 * 1000.0;
+    if !distance_m.is_finite() {
+        return None;
+    }
+    if !ignore_lock_range && distance_m > lock_range_m {
+        return Some(0.0);
+    }
+    let mut combined = 0.0;
+    for source in sources {
+        let strength = source.strength / source.cycle_s * (1.0 - resistance);
+        combined += strength * pyfa_ewar_range_factor(source, distance_m);
+    }
+    combined.is_finite().then_some(combined)
+}
+
 /// Passive shield or capacitor charge, in the same units as the supplied capacity.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PassiveChargeSample {
@@ -191,6 +378,175 @@ impl SimulatedCapacitorGraph<'_> {
         }
         Ok(points)
     }
+}
+
+/// The qualified ordinary shield repair graph reports either instantaneous HP/s or cumulative HP.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteRepairTimeSeries {
+    Rps,
+    Total,
+}
+
+/// A single immediate, uncharged, continuously repeating shield repair cycle.
+#[derive(Clone, Copy, Debug)]
+pub struct RemoteRepairCycle {
+    pub duration_s: f64,
+    pub amount_hp: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct RemoteRepairTimeGraph {
+    pub markers: Vec<(f64, f64)>,
+    pub plot: Option<Vec<(f64, f64)>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteRepairTimeError {
+    InvalidInput,
+    PointLimit,
+    Cancelled,
+}
+
+/// Plot and sample Pyfa's time-cache steps. `cycle = None` means no active repairer.
+/// `application` is the graph-rounded range/lock multiplier resolved from native projection.
+pub fn remote_repair_time_graph(
+    cycle: Option<RemoteRepairCycle>,
+    application: f64,
+    series: RemoteRepairTimeSeries,
+    times: &[f64],
+    plot_range: Option<[f64; 2]>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<RemoteRepairTimeGraph, RemoteRepairTimeError> {
+    use RemoteRepairTimeError as Error;
+    const MAX_TIME: f64 = 2500.0;
+    const MAX_EVENTS: usize = 1024;
+    if is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    if !application.is_finite()
+        || !(0.0..=1.0).contains(&application)
+        || times.len() > 201
+        || times.iter().any(|t| !t.is_finite() || !(0.0..=MAX_TIME).contains(t))
+        || times.windows(2).any(|pair| pair[0] >= pair[1])
+        || plot_range.is_some_and(|[a, b]| !a.is_finite() || !b.is_finite() || a < 0.0 || a > b || b > MAX_TIME)
+    {
+        return Err(Error::InvalidInput);
+    }
+    let horizon = times
+        .last()
+        .copied()
+        .unwrap_or(0.0)
+        .max(plot_range.map(|range| range[1]).unwrap_or(0.0));
+    let mut events = Vec::new();
+    if let Some(cycle) = cycle {
+        if !cycle.duration_s.is_finite()
+            || cycle.duration_s <= 0.0
+            || !cycle.amount_hp.is_finite()
+            || cycle.amount_hp <= 0.0
+        {
+            return Err(Error::InvalidInput);
+        }
+        if series == RemoteRepairTimeSeries::Rps {
+            let rate = (cycle.amount_hp / cycle.duration_s) * application;
+            if !rate.is_finite() {
+                return Err(Error::InvalidInput);
+            }
+            events.push((0.0, rate));
+        } else {
+            let mut time = 0.0;
+            let mut cumulative = 0.0;
+            loop {
+                if is_cancelled() {
+                    return Err(Error::Cancelled);
+                }
+                if events.len() >= MAX_EVENTS {
+                    return Err(Error::PointLimit);
+                }
+                cumulative += cycle.amount_hp;
+                if !cumulative.is_finite() {
+                    return Err(Error::InvalidInput);
+                }
+                events.push((time, cumulative * application));
+                if time > horizon {
+                    break;
+                }
+                let next = time + cycle.duration_s;
+                if !next.is_finite() || next <= time {
+                    return Err(Error::InvalidInput);
+                }
+                time = next;
+            }
+        }
+    }
+    // eos.utils.float.floatUnerr compares seven significant decimal digits.
+    let unerr = |value: f64| -> f64 {
+        if value == 0.0 || (value.abs() < 1_000_000.0 && value.fract() == 0.0) {
+            value
+        } else {
+            format!("{value:.6e}").parse().expect("finite time")
+        }
+    };
+    let rounded_times: Vec<_> = events.iter().map(|(time, _)| unerr(*time)).collect();
+    let mut markers = Vec::with_capacity(times.len());
+    for &time in times {
+        if is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let rounded_time = unerr(time);
+        let index = rounded_times.partition_point(|event| *event <= rounded_time);
+        markers.push((time, if index == 0 { 0.0 } else { events[index - 1].1 }));
+    }
+    let plot = if let Some([min_time, max_time]) = plot_range {
+        let mut points = Vec::new();
+        let mut current_value = None;
+        let mut current_time = None;
+        for &(time, value) in &events {
+            if is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            let previous_value = current_value;
+            current_value = Some(value);
+            current_time = Some(time);
+            if time < min_time {
+                continue;
+            }
+            if points.is_empty() {
+                let initial = previous_value.unwrap_or(0.0);
+                points.push((min_time, initial));
+                if time > min_time {
+                    points.push((time, initial));
+                }
+                if previous_value != Some(value) {
+                    points.push((time, value));
+                }
+                // Pyfa builds through the first event strictly after the plot end.
+                if time > max_time {
+                    break;
+                }
+                continue;
+            }
+            if time >= max_time {
+                points.push((max_time, previous_value.unwrap_or(0.0)));
+                break;
+            }
+            if previous_value != Some(value) {
+                if let Some(previous) = previous_value {
+                    points.push((time, previous));
+                }
+                points.push((time, value));
+            }
+        }
+        if current_time.is_none() {
+            points.push((min_time, 0.0));
+        }
+        if max_time > current_time.unwrap_or(0.0) {
+            points.push((max_time, current_value.unwrap_or(0.0)));
+        }
+        Some(points)
+    } else {
+        None
+    };
+    Ok(RemoteRepairTimeGraph { markers, plot })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -509,5 +865,79 @@ mod simulated_capacitor_tests {
             graph.plot(0.0, 1.0, usize::MAX, &|| false),
             Err(SimulatedCapacitorPlotError::PointLimit)
         );
+    }
+}
+
+#[cfg(test)]
+mod remote_repair_time_tests {
+    use std::cell::Cell;
+
+    use super::{RemoteRepairCycle, RemoteRepairTimeError, RemoteRepairTimeSeries, remote_repair_time_graph};
+
+    fn cycle() -> Option<RemoteRepairCycle> {
+        Some(RemoteRepairCycle {
+            duration_s: 8.0,
+            amount_hp: 680.0,
+        })
+    }
+
+    #[test]
+    fn cumulative_marker_rounding_and_singleton_plot_follow_pyfa() {
+        let graph = remote_repair_time_graph(
+            cycle(),
+            1.0,
+            RemoteRepairTimeSeries::Total,
+            &[7.9999994, 7.9999995],
+            Some([5.0, 5.0]),
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(graph.markers, [(7.9999994, 680.0), (7.9999995, 1360.0)]);
+        assert_eq!(graph.plot.unwrap(), [(5.0, 680.0), (8.0, 680.0), (8.0, 1360.0)]);
+    }
+
+    #[test]
+    fn rps_and_offline_plots_preserve_pyfa_empty_and_post_horizon_shapes() {
+        let rps = remote_repair_time_graph(
+            cycle(),
+            1.0,
+            RemoteRepairTimeSeries::Rps,
+            &[5.0],
+            Some([5.0, 10.0]),
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(rps.markers, [(5.0, 85.0)]);
+        assert_eq!(rps.plot.unwrap(), [(10.0, 85.0)]);
+        let offline = remote_repair_time_graph(
+            None,
+            0.0,
+            RemoteRepairTimeSeries::Total,
+            &[0.0],
+            Some([0.0, 0.0]),
+            &|| false,
+        )
+        .unwrap();
+        assert_eq!(offline.markers, [(0.0, 0.0)]);
+        assert_eq!(offline.plot.unwrap(), [(0.0, 0.0)]);
+    }
+
+    #[test]
+    fn tiny_cycles_are_bounded_and_cancellation_stops_generation() {
+        let tiny = Some(RemoteRepairCycle {
+            duration_s: 1e-10,
+            amount_hp: 1.0,
+        });
+        assert!(matches!(
+            remote_repair_time_graph(tiny, 1.0, RemoteRepairTimeSeries::Total, &[2500.0], None, &|| false),
+            Err(RemoteRepairTimeError::PointLimit)
+        ));
+        let calls = Cell::new(0);
+        let result = remote_repair_time_graph(cycle(), 1.0, RemoteRepairTimeSeries::Total, &[], None, &|| {
+            calls.set(calls.get() + 1);
+            calls.get() == 3
+        });
+        assert!(matches!(result, Err(RemoteRepairTimeError::Cancelled)));
+        assert_eq!(calls.get(), 3);
     }
 }
