@@ -69,7 +69,7 @@ impl CapSources<'_> {
         cseq_cache: &mut CseqCache,
         ctx: &SvcCtx,
         calc: &mut Calc,
-        emit: impl FnMut(UItemId, AggrIterData<PValue>) -> Result<(), E>,
+        emit: impl FnMut(&mut Calc, UItemId, AggrIterData<PValue>, CycleSeq<CycleDataFull, CSeqHardDtFull>) -> Result<(), E>,
     ) -> Result<(), E> {
         let cycling_options = CyclingOptions::Sim(CycleOptionsSim {
             optional_reloads: self.optional_reloads,
@@ -146,7 +146,7 @@ pub(in crate::svc::vast::stats::cap::sim) fn prepare_events(
     for kind in CapSourceKind::ALL {
         let direction = kind.direction();
         let mut stagger_map = RMapVec::new();
-        let Ok(()) = sources.visit(kind, cseq_cache, ctx, calc, |item_uid, iter_data| {
+        let Ok(()) = sources.visit(kind, cseq_cache, ctx, calc, |_, item_uid, iter_data, _| {
             if matches!(kind, CapSourceKind::Injector) {
                 injector_events.push(CapSimEvent::new(
                     PValue::ZERO,
@@ -174,7 +174,7 @@ fn visit_sources<S, E>(
     calc: &mut Calc,
     cycling_options: CyclingOptions,
     sources: &RMapRMap<UItemId, REffectId, S>,
-    mut emit: impl FnMut(UItemId, AggrIterData<PValue>) -> Result<(), E>,
+    mut emit: impl FnMut(&mut Calc, UItemId, AggrIterData<PValue>, CycleSeq<CycleDataFull, CSeqHardDtFull>) -> Result<(), E>,
     mut aggregate: impl FnMut(
         &mut Calc,
         UItemId,
@@ -193,7 +193,7 @@ fn visit_sources<S, E>(
             };
             let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
             if let Some(iter_data) = aggregate(calc, item_uid, effect, cseq, ospec) {
-                emit(item_uid, iter_data)?;
+                emit(calc, item_uid, iter_data, *cseq)?;
             }
         }
     }

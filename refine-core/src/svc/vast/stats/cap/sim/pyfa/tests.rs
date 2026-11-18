@@ -172,6 +172,61 @@ fn full_start_uses_the_summary_history_when_repeats_are_disabled() {
 }
 
 #[test]
+fn railgun_capacitor_reload_matches_pinned_pyfa() {
+    // Merlin 603, All 5, 125mm Railgun I with Iron Charge S; the pinned
+    // fixture records 80 shots per clip and a 5 second reload.
+    let gun = PyfaCycle {
+        clip_size: 80,
+        reload_ms: PValue::from_f64_unchecked(5000.0),
+        stagger: false,
+        ..cycle(2340, 0.7901249999999999)
+    };
+    let result = PyfaEvents::simulate(
+        vec![gun],
+        PValue::from_f64_unchecked(437.5),
+        131250.0,
+        Some(request(300.0, 600.0)),
+    )
+    .unwrap();
+    assert!(
+        matches!(result.summary, StatCapSim::Stable(fraction) if (fraction.into_f64() - 0.9796254542275523).abs() < 1e-9)
+    );
+    let trace = result.trace.unwrap();
+    assert_eq!(trace.len(), 251);
+    assert_close(trace[79].0, 184.86);
+    assert_close(trace[80].0, 192.2);
+    assert_close(trace[trace.len() - 1].0, 600.0);
+    assert_close(trace[trace.len() - 1].1, 428.79889507895837);
+}
+
+#[test]
+fn simultaneous_local_and_projected_cycles_match_pinned_pyfa() {
+    // Pinned Kestrel with shield booster, incoming small neut and cap transfer.
+    let result = PyfaEvents::simulate(
+        vec![cycle(2000, 18.0), cycle(6000, 45.0), cycle(5000, -30.0)],
+        PValue::from_f64_unchecked(412.5),
+        123750.0,
+        Some(request(300.0, 600.0)),
+    )
+    .unwrap();
+    assert!(matches!(result.summary, StatCapSim::Time(time) if time.into_f64() == 100.0));
+    let trace = result.trace.unwrap();
+    let first = [
+        (0.0, 267.0),
+        (2.0, 259.16655816518715),
+        (4.0, 251.7997565604648),
+        (5.0, 287.4129129843657),
+        (6.0, 228.93765338372015),
+    ];
+    for ((time, cap), (expected_time, expected_cap)) in trace.iter().copied().zip(first) {
+        assert_close(time, expected_time);
+        assert_close(cap, expected_cap);
+    }
+    assert_eq!(trace.last().unwrap().0, 84.0);
+    assert_eq!(trace.last().unwrap().1, 0.0);
+}
+
+#[test]
 fn invalid_trace_bounds_are_rejected_and_records_are_bounded() {
     let capacity = PValue::from_f64_unchecked(100.0);
     for start in [-1.0, 101.0, f64::NAN, f64::INFINITY] {

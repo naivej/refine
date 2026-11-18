@@ -100,27 +100,12 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_missile_range_mult(
     projector_uid: UItemId,
     proj_data: UProjData,
 ) -> PValue {
-    let max_velocity = PValue::from_finite_value_clamped(calc.get_item_oattr_ffb_extra(
-        ctx,
-        projector_uid,
-        ctx.ac().max_velocity,
-        Value::ZERO,
-    ));
-    let flight_duration = PValue::from_finite_value_clamped(
-        calc.get_item_oattr_ffb_extra(ctx, projector_uid, ctx.ac().explosion_delay, Value::ZERO) / Value::THOUSAND,
-    );
-    let mass = PValue::from_finite_value_clamped(calc.get_item_oattr_ffb_extra(
-        ctx,
-        projector_uid,
-        ctx.ac().mass,
-        Value::ZERO,
-    ));
-    let agility = PValue::from_finite_value_clamped(calc.get_item_oattr_ffb_extra(
-        ctx,
-        projector_uid,
-        ctx.ac().agility,
-        Value::ZERO,
-    ));
+    let MissileFlight {
+        max_velocity,
+        flight_duration,
+        mass,
+        agility,
+    } = MissileFlight::from_charge(ctx, calc, projector_uid);
     let inertia_factor = calc_inertia_factor(mass, agility);
     let flight_duration_lower = flight_duration.floor_tick();
     // Missiles appear in center of attacking ship and explode on surface of target ship
@@ -153,6 +138,82 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_missile_range_mult(
             }
         }
     }
+}
+
+struct MissileFlight {
+    max_velocity: PValue,
+    flight_duration: PValue,
+    mass: PValue,
+    agility: PValue,
+}
+
+impl MissileFlight {
+    fn from_charge(ctx: &SvcCtx, calc: &mut Calc, charge_uid: UItemId) -> Self {
+        let mut attr = |rid| calc.get_item_oattr_ffb_extra(ctx, charge_uid, rid, Value::ZERO);
+        Self {
+            max_velocity: PValue::from_finite_value_clamped(attr(ctx.ac().max_velocity)),
+            // The missile flight-time effect already adds the time across the source radius.
+            flight_duration: PValue::from_finite_value_clamped(attr(ctx.ac().explosion_delay) / Value::THOUSAND),
+            mass: PValue::from_finite_value_clamped(attr(ctx.ac().mass)),
+            agility: PValue::from_finite_value_clamped(attr(ctx.ac().agility)),
+        }
+    }
+
+    fn pyfa_range_mult(&self, overview_m: f64, ship_radius_m: f64) -> PValue {
+        let speed = self.max_velocity.into_f64();
+        if speed == 0.0 {
+            return PValue::ZERO;
+        }
+        // Pyfa Module.missileMaxRangeData rounds flight time before splitting it into ticks.
+        let duration = pyfa_missile_round(self.flight_duration).into_f64();
+        let acceleration_s = self.mass.into_f64() * self.agility.into_f64() / 1_000_000.0;
+        let range_at = |tick: f64| {
+            let accelerating = tick.min(acceleration_s);
+            let travel = speed / 2.0 * accelerating + speed * (tick - accelerating);
+            (travel - ship_radius_m).max(0.0)
+        };
+        if overview_m <= range_at(duration.floor()) {
+            PValue::ONE
+        } else if overview_m <= range_at(duration.ceil()) {
+            PValue::from_f64_unchecked(duration.fract())
+        } else {
+            PValue::ZERO
+        }
+    }
+}
+
+pub(in crate::nd::effect::specs::proj_mult_getter) fn get_pyfa_missile_range_mult(
+    ctx: &SvcCtx,
+    calc: &mut Calc,
+    charge_uid: UItemId,
+    proj_data: UProjData,
+) -> PValue {
+    let radius = ctx.u_data.items.get(charge_uid).get_carrier_radius(ctx.u_data);
+    MissileFlight::from_charge(ctx, calc, charge_uid)
+        .pyfa_range_mult(proj_data.get_range_s2s().into_f64(), radius.into_f64())
+}
+
+/// Pyfa eos.utils.float.floatUnerr keeps seven significant decimal digits, with ties to even.
+pub(in crate::nd::effect::specs::proj_mult_getter) fn pyfa_missile_round(value: PValue) -> PValue {
+    let raw = value.into_f64();
+    if raw == 0.0 || !raw.is_finite() {
+        return value;
+    }
+    let digits = 7 - raw.log10().ceil() as i32;
+    // Powers through 10^22 are exactly representable. For distant exponents or an apparent
+    // decimal tie, the float formatter rounds the exact binary value before converting back.
+    if (0..=22).contains(&digits) {
+        let scale = 10.0_f64.powi(digits);
+        let scaled = raw * scale;
+        if scaled.fract() != 0.5 {
+            return PValue::from_f64_unchecked(scaled.round() / scale);
+        }
+    }
+    PValue::from_f64_unchecked(
+        format!("{raw:.6e}")
+            .parse::<f64>()
+            .expect("formatted a floating-point value"),
+    )
 }
 
 pub(in crate::nd::effect::specs::proj_mult_getter) fn get_fof_missile_range_mult(
@@ -334,5 +395,49 @@ fn get_effect_range(ctx: &SvcCtx, calc: &mut Calc, projector_uid: UItemId, attr_
             _ => PValue::ZERO,
         },
         None => PValue::ZERO,
+    }
+}
+
+#[cfg(test)]
+mod pyfa_missile_tests {
+    use super::*;
+
+    #[test]
+    fn rounds_flight_time_and_application_like_pyfa_at_decimal_boundaries() {
+        for (value, expected) in [
+            (0.0, 0.0),
+            (1.0, 1.0),
+            (0.10000005, 0.1),
+            (0.12345675, 0.1234568),
+            (0.12345665, 0.1234567),
+            (7.505449481481482, 7.505449),
+            (7.99999999, 8.0),
+            (8.0000001, 8.0),
+            (0.00000012345675, 0.0000001234568),
+            (1e-308, 1e-308),
+            (10000005.0, 10000000.0),
+            (10000015.0, 10000020.0),
+        ] {
+            assert_eq!(
+                pyfa_missile_round(PValue::from_f64_unchecked(value)).into_f64(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn integer_flight_tick_includes_its_upper_range_and_a_stationary_missile_has_no_range() {
+        let mut flight = MissileFlight {
+            max_velocity: PValue::from_f64_unchecked(1000.0),
+            flight_duration: PValue::from_f64_unchecked(7.99999999),
+            mass: PValue::from_f64_unchecked(1_000_000.0),
+            agility: PValue::ONE,
+        };
+        let radius = 40.0;
+        let cutoff = 7_460.0_f64;
+        assert_eq!(flight.pyfa_range_mult(cutoff, radius), PValue::ONE);
+        assert_eq!(flight.pyfa_range_mult(cutoff.next_up(), radius), PValue::ZERO);
+        flight.max_velocity = PValue::ZERO;
+        assert_eq!(flight.pyfa_range_mult(0.0, radius), PValue::ZERO);
     }
 }

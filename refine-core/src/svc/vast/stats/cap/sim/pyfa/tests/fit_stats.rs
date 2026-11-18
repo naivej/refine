@@ -13,7 +13,25 @@ const BOOSTER: EItemId = EItemId::from_i32(399);
 const DURATION: EAttrId = EAttrId::from_i32(73);
 
 #[derive(Debug)]
-struct CapTestData;
+struct CapTestData {
+    delay_ms: f64,
+    capacity: f64,
+    recharge_ms: f64,
+    need: f64,
+    duration_ms: f64,
+}
+
+impl Default for CapTestData {
+    fn default() -> Self {
+        Self {
+            delay_ms: 0.0,
+            capacity: 100.0,
+            recharge_ms: 5000.0,
+            need: 100.0,
+            duration_ms: 1000.0,
+        }
+    }
+}
 
 impl EveDataHandlerCore for CapTestData {
     fn get_data(&self) -> Result<EData, EveDataHandlerError> {
@@ -35,11 +53,12 @@ impl EveDataHandlerCore for CapTestData {
             });
         }
         for (item_id, attr_id, value) in [
-            (SHIP, EAttrId::CAPACITOR_CAPACITY, 100.0),
-            (SHIP, EAttrId::RECHARGE_RATE, 5000.0),
+            (SHIP, EAttrId::CAPACITOR_CAPACITY, self.capacity),
+            (SHIP, EAttrId::RECHARGE_RATE, self.recharge_ms),
             (SHIP, EAttrId::MED_SLOTS, 4.0),
-            (BOOSTER, EAttrId::CAPACITOR_NEED, 100.0),
-            (BOOSTER, DURATION, 1000.0),
+            (BOOSTER, EAttrId::CAPACITOR_NEED, self.need),
+            (BOOSTER, DURATION, self.duration_ms),
+            (BOOSTER, EAttrId::MOD_REACTIVATION_DELAY, self.delay_ms),
         ] {
             data.attrs.data.push(EAttr {
                 id: attr_id,
@@ -111,7 +130,7 @@ fn assert_stats(sol: &mut SolOwned, fit_id: &crate::FitId, active: bool) {
 
 #[test]
 fn both_simulators_follow_module_state_changes() {
-    let source = Src::new(&CapTestData.into(), None).unwrap();
+    let source = Src::new(&CapTestData::default().into(), None).unwrap();
     let mut sol = SolOwned::new(&source);
     let mut fit = sol.add_fit();
     let fit_id = fit.get_fit_id();
@@ -133,4 +152,57 @@ fn both_simulators_follow_module_state_changes() {
     assert_stats(&mut sol, &fit_id, true);
     sol.get_module(&module_id).unwrap().set_state(ModuleState::Offline);
     assert_stats(&mut sol, &fit_id, false);
+}
+
+#[test]
+fn pyfa_simulator_adds_reactivation_delay_to_each_cycle() {
+    // Pinned Pyfa Kestrel, All 5, active Warp Core Stabilizer I (10998).
+    // Effective cycle is 10 s plus a 150 s reactivation delay.
+    let source = Src::new(
+        &CapTestData {
+            delay_ms: 150_000.0,
+            capacity: 412.5,
+            recharge_ms: 123_750.0,
+            need: 80.0,
+            duration_ms: 10_000.0,
+        }
+        .into(),
+        None,
+    )
+    .unwrap();
+    let mut sol = SolOwned::new(&source);
+    let mut fit = sol.add_fit();
+    fit.set_ship(ItemTypeId::from_i32(SHIP.into_i32()), None, None);
+    fit.add_module(
+        ModRack::Mid,
+        AddMode::Equip,
+        ItemTypeId::from_i32(BOOSTER.into_i32()),
+        ModuleState::Active,
+    )
+    .unwrap();
+    let result = fit
+        .stats()
+        .get_stat_cap_sim_pyfa(
+            false,
+            Some(StatCapSimTraceRequest {
+                start_cap_gj: 412.5,
+                end_time_s: 600.0,
+            }),
+        )
+        .unwrap();
+    assert!(
+        matches!(result.summary, StatCapSim::Stable(fraction) if (fraction.into_f64() - 0.9027114410338217).abs() < 1e-9)
+    );
+    let expected = [
+        (0.0, 332.5),
+        (160.0, 332.3686975952961),
+        (320.0, 332.36846982229974),
+        (480.0, 332.36846942713817),
+    ];
+    let actual = result.trace.unwrap();
+    assert_eq!(actual.len(), expected.len());
+    for ((time, cap), (expected_time, expected_cap)) in actual.into_iter().zip(expected) {
+        assert_eq!(time, expected_time);
+        assert!((cap - expected_cap).abs() < 1e-8);
+    }
 }

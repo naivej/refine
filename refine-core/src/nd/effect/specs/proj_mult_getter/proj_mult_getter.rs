@@ -8,8 +8,8 @@ use super::mult::{
     },
     range::{
         get_aoe_burst_range_mult, get_aoe_dd_round_range_mult, get_bomb_range_mult, get_fof_missile_range_mult,
-        get_missile_range_mult, get_std_full_restricted_range_mult, get_std_simple_c2s_range_mult,
-        get_std_simple_s2s_range_mult,
+        get_missile_range_mult, get_pyfa_missile_range_mult, get_std_full_restricted_range_mult,
+        get_std_simple_c2s_range_mult, get_std_simple_s2s_range_mult, pyfa_missile_round,
     },
 };
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
     rd::REffect,
     stats::StatCritOptions,
     svc::{Calc, SvcCtx},
-    ud::{UItemId, UProjData},
+    ud::{UItem, UItemId, UProjData},
 };
 
 #[cfg_attr(feature = "dev", derive(PartialEq))]
@@ -45,6 +45,7 @@ pub(crate) enum NEffectProjMultGetter {
     AoeBurstRange,
     // Variants specific to a single effect
     MissileLaunchingApplication,
+    MissileLaunchingRange,
     FtrAbilAttackM,
     FtrAbilMissiles,
     FtrAbilKamikaze,
@@ -91,9 +92,24 @@ impl NEffectProjMultGetter {
             // Variants specific to a single effect
             Self::MissileLaunchingApplication => {
                 let u_item = ctx.u_data.items.get(projector_uid);
-                match u_item.is_guided_bomb() {
-                    true => get_bomb_application_mult(ctx, calc, projector_uid, projectee_uid),
-                    false => get_std_missile_application_mult(ctx, calc, projector_uid, projectee_uid, proj_data),
+                if u_item.is_guided_bomb() {
+                    return get_bomb_application_mult(ctx, calc, projector_uid, projectee_uid);
+                }
+                let application = get_std_missile_application_mult(ctx, calc, projector_uid, projectee_uid, proj_data);
+                if ctx.u_data.pyfa_damage_compatibility && matches!(u_item, UItem::Charge(_)) {
+                    let range = get_pyfa_missile_range_mult(ctx, calc, projector_uid, proj_data);
+                    return pyfa_missile_round(range * application);
+                }
+                application
+            }
+            Self::MissileLaunchingRange => {
+                // Pyfa treats the rounded product of range chance and application as a single
+                // damage multiplier, including for volley. It is already applied above.
+                let item = ctx.u_data.items.get(projector_uid);
+                if ctx.u_data.pyfa_damage_compatibility && matches!(item, UItem::Charge(_)) && !item.is_guided_bomb() {
+                    PValue::ONE
+                } else {
+                    get_missile_range_mult(ctx, calc, projector_uid, proj_data)
                 }
             }
             Self::FtrAbilAttackM => {
@@ -141,6 +157,7 @@ impl NEffectProjMultGetter {
             Self::AoeBurstRange => [Some(AAttrId::MAX_RANGE), Some(AAttrId::DOOMSDAY_AOE_RANGE)],
             // Variants specific to a single effect
             Self::MissileLaunchingApplication => [None, None],
+            Self::MissileLaunchingRange => [None, None],
             Self::FtrAbilAttackM => [None, None],
             Self::FtrAbilMissiles => [None, None],
             Self::FtrAbilKamikaze => [None, None],

@@ -13,7 +13,7 @@ pub(in crate::nd::effect) fn mk_n_effect() -> NEffect {
         normal_dmg: Some(NEffectProjOpcSpec {
             base: NEffectDmgOutputGetter::Regular,
             proj_mult_str: Some(NEffectProjMultGetter::MissileLaunchingApplication),
-            proj_mult_chance: Some(NEffectProjMultGetter::MissileRange),
+            proj_mult_chance: Some(NEffectProjMultGetter::MissileLaunchingRange),
             ..
         }),
         ..
