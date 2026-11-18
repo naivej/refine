@@ -1,8 +1,11 @@
 use super::{
-    data::GetMainDuration, seq::CycleSeq, seq_looped::CycleSeqLooped, seq_split::CycleSeqSplit,
+    data::{CSeqHardDtFull, CycleDataFull, GetMainDuration},
+    seq::CycleSeq,
+    seq_looped::CycleSeqLooped,
+    seq_split::CycleSeqSplit,
     seq_var_loop_sin::CSeqLoopSin,
 };
-use crate::{Count, PValue, util::LibConverter};
+use crate::{Count, PValue, UnitInterval, util::LibConverter};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Following parts are lopped:
@@ -32,6 +35,26 @@ impl<D, HDT> CSeqLoopLimSin<D, HDT> {
     }
     pub(super) fn get_hard_dt(&self) -> Option<&HDT> {
         self.hard_dt.as_ref()
+    }
+}
+
+impl CSeqLoopLimSin<CycleDataFull, CSeqHardDtFull> {
+    /// A magazine made of equal, fully charged cycles followed by one reload.
+    pub(in crate::svc) fn full_magazine(&self) -> Option<(f64, u32, f64)> {
+        let regular = self.p1_data.active;
+        let last = self.p2_data.active;
+        if self.hard_dt.is_some()
+            || self.p1_data.soft_dt.is_some()
+            || regular.duration != last.duration
+            || regular.chargedness != Some(UnitInterval::ONE)
+            || last.chargedness != Some(UnitInterval::ONE)
+        {
+            return None;
+        }
+        self.p2_data.soft_dt.filter(|downtime| downtime.reasons.reload)?;
+        let cycles = self.p1_repeat_count.into_u32().checked_add(1)?;
+        let reload = self.p2_data.get_main_duration() - last.duration;
+        Some((regular.duration.into_f64(), cycles, reload.into_f64()))
     }
 }
 

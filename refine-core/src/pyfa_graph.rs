@@ -154,10 +154,23 @@ pub fn pyfa_ewar_web_percentage(
     if !ignore_lock_range && distance_m > lock_range_m {
         return Some(0.0);
     }
+    let mut strengths = [0.0; 2];
+    for (i, source) in sources.iter().enumerate() {
+        strengths[i] = source.strength * (1.0 - resistance) * pyfa_ewar_range_factor(source, distance_m);
+    }
+    let combined = pyfa_ewar_multiplier(&strengths[..sources.len()])?;
+    let value = (1.0 - combined) * 100.0;
+    value.is_finite().then_some(value)
+}
+
+/// Stack up to two signed percent modifiers using Pyfa's multiplier order.
+pub fn pyfa_ewar_multiplier(strengths: &[f64]) -> Option<f64> {
+    if strengths.len() > 2 || strengths.iter().any(|s| !s.is_finite() || *s > 0.0) {
+        return None;
+    }
     let mut multipliers = [1.0_f64; 2];
     let mut count = 0;
-    for s in sources {
-        let strength = s.strength * (1.0 - resistance) * pyfa_ewar_range_factor(s, distance_m);
+    for strength in strengths {
         let multiplier = 1.0 + strength / 100.0;
         if multiplier < 1.0 {
             multipliers[count] = multiplier;
@@ -171,8 +184,7 @@ pub fn pyfa_ewar_web_percentage(
     for (i, multiplier) in multipliers[..count].iter().copied().enumerate() {
         combined *= 1.0 + (multiplier - 1.0) * (-(i as f64).powi(2) / 7.1289).exp();
     }
-    let value = (1.0 - combined) * 100.0;
-    value.is_finite().then_some(value)
+    combined.is_finite().then_some(combined)
 }
 
 /// Sample at most two active neutralizers without victim capacity or signature limits.
@@ -556,6 +568,108 @@ pub fn remote_repair_schedule_graph(
             }
         }
     }
+    sample_step_events(&events, times, plot_range, plot_event_limit, is_cancelled)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MissileTimeSeries {
+    Dps,
+    Volley,
+    Damage,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MissileMagazine {
+    pub cycle_s: f64,
+    pub cycles: u32,
+    pub reload_s: f64,
+}
+
+/// Apply a single fully charged magazine schedule shared by identical launchers.
+/// Time in the Pyfa graph tracks activation rather than missile travel.
+pub fn missile_damage_time_graph(
+    magazine: MissileMagazine,
+    applied_volley_hp: f64,
+    series: MissileTimeSeries,
+    times: &[f64],
+    plot_range: Option<[f64; 2]>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<RemoteRepairTimeGraph, RemoteRepairTimeError> {
+    use RemoteRepairTimeError as Error;
+    const MAX_CYCLES: usize = 1024;
+    let MissileMagazine {
+        cycle_s,
+        cycles,
+        reload_s,
+    } = magazine;
+    if !positive(cycle_s)
+        || !positive(reload_s)
+        || cycles == 0
+        || !nonnegative(applied_volley_hp)
+        || times.len() > 201
+        || times.iter().any(|t| !(0.0..=2500.0).contains(t))
+        || times.windows(2).any(|pair| pair[0] >= pair[1])
+        || plot_range.is_some_and(|[a, b]| !(0.0..=2500.0).contains(&a) || !(a..=2500.0).contains(&b))
+    {
+        return Err(Error::InvalidInput);
+    }
+    let plot_end = plot_range.map(|[_, end]| end);
+    let horizon = times
+        .last()
+        .copied()
+        .unwrap_or_default()
+        .max(plot_end.unwrap_or_default());
+    let unit = match series {
+        MissileTimeSeries::Dps => applied_volley_hp / cycle_s,
+        MissileTimeSeries::Volley | MissileTimeSeries::Damage => applied_volley_hp,
+    };
+    if !unit.is_finite() {
+        return Err(Error::InvalidInput);
+    }
+    let cumulative = series == MissileTimeSeries::Damage;
+    let mut time = 0.0;
+    let mut total = 0.0;
+    let mut events = if cumulative { Vec::new() } else { vec![(0.0, unit)] };
+    let mut plot_event_limit = if cumulative { None } else { plot_end.map(|_| 1) };
+    for index in 1..=MAX_CYCLES {
+        if is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        if cumulative {
+            total += unit;
+            if !total.is_finite() {
+                return Err(Error::InvalidInput);
+            }
+            events.push((time, total));
+        }
+        if time > horizon {
+            return sample_step_events(&events, times, plot_range, plot_event_limit, is_cancelled);
+        }
+        let end = time + cycle_s;
+        let reloading = (index as u32).is_multiple_of(cycles);
+        let next = if reloading { time + (cycle_s + reload_s) } else { end };
+        if !next.is_finite() || next <= time {
+            return Err(Error::InvalidInput);
+        }
+        if reloading && !cumulative {
+            events.extend([(end, 0.0), (next, unit)]);
+            if plot_end.is_some_and(|through| time <= through) {
+                plot_event_limit = Some(events.len());
+            }
+        }
+        time = next;
+    }
+    Err(Error::PointLimit)
+}
+
+fn sample_step_events(
+    events: &[(f64, f64)],
+    times: &[f64],
+    plot_range: Option<[f64; 2]>,
+    plot_event_limit: Option<usize>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<RemoteRepairTimeGraph, RemoteRepairTimeError> {
+    use RemoteRepairTimeError as Error;
     // eos.utils.float.floatUnerr compares seven significant decimal digits.
     let unerr = |value: f64| -> f64 {
         if value == 0.0 || (value.abs() < 1_000_000.0 && value.fract() == 0.0) {
@@ -821,6 +935,180 @@ fn nonnegative(value: f64) -> bool {
     value.is_finite() && value >= 0.0
 }
 
+/// A bounded turret time-cache sampler for one uninterrupted, immediate-volley module.
+/// `volleys` contains unresisted per-cycle native paper volleys through the cap;
+/// the last entry is used for all subsequent cycles. `application` is the
+/// independently resolved Pyfa graph multiplier (which can exceed one).
+#[derive(Debug, Clone, Copy)]
+pub struct SpoolTimeMarker {
+    pub dps: f64,
+    pub volley: f64,
+    pub damage: f64,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpoolTimeError {
+    InvalidInput,
+    Cancelled,
+}
+pub fn spool_time_markers(
+    volleys: &[f64],
+    cycle_s: f64,
+    application: f64,
+    times: &[f64],
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<Vec<SpoolTimeMarker>, SpoolTimeError> {
+    if volleys.is_empty()
+        || volleys.len() > 65
+        || volleys.iter().any(|v| !v.is_finite() || *v < 0.0)
+        || !cycle_s.is_finite()
+        || cycle_s < 1.0
+        || !application.is_finite()
+        || application < 0.0
+        || times.is_empty()
+        || times.len() > 201
+        || times.iter().any(|v| !v.is_finite() || !(0.0..=600.0).contains(v))
+        || times.windows(2).any(|v| v[0] >= v[1])
+    {
+        return Err(SpoolTimeError::InvalidInput);
+    }
+    let unerr = |x: f64| -> f64 {
+        if x == 0.0 || (x.abs() < 1_000_000.0 && x.fract() == 0.0) {
+            x
+        } else {
+            format!("{x:.6e}").parse().expect("finite time")
+        }
+    };
+    let mut out = Vec::with_capacity(times.len());
+    let mut cycle = 0usize;
+    let mut at = 0.0;
+    let mut cumulative = 0.0;
+    for &time in times {
+        if is_cancelled() {
+            return Err(SpoolTimeError::Cancelled);
+        }
+        while unerr(at) <= unerr(time) {
+            cumulative += volleys[cycle.min(volleys.len() - 1)];
+            cycle += 1;
+            at += cycle_s;
+        }
+        let index = cycle.saturating_sub(1).min(volleys.len() - 1);
+        let raw = volleys[index];
+        // Pyfa computes the active segment from successive accumulated times.
+        let start = at - cycle_s;
+        let span = (start + cycle_s) - start;
+        out.push(SpoolTimeMarker {
+            dps: raw / span * application,
+            volley: raw * application,
+            damage: cumulative * application,
+        });
+    }
+    Ok(out)
+}
+/// Prepared Vedmak-only time series for a stationary 400 m signature target at 10 km.
+/// Rufa must validate pilot, equipment outside module racks, and scenario before calling.
+pub struct VedmakSpoolTimePrepared {
+    cycle_s: f64,
+    application: f64,
+    volleys: Vec<f64>,
+}
+impl VedmakSpoolTimePrepared {
+    pub fn from_fit(fit: &mut crate::Fit<'_>, is_cancelled: &dyn Fn() -> bool) -> Result<Self, SpoolTimeError> {
+        use lender::Lender;
+
+        use crate::{
+            AttrId, Count, EveAttrId, ItemCommon, ItemTypeId, ModRack, ModuleState, Spool,
+            stats::{StatCritOptions, StatTimeOptions, StatTimeOptionsBurst},
+        };
+        if is_cancelled() {
+            return Err(SpoolTimeError::Cancelled);
+        }
+        let id = |x| ItemTypeId::from_i32(x);
+        if fit.get_ship().is_none_or(|ship| ship.get_type_id() != id(47270)) {
+            return Err(SpoolTimeError::InvalidInput);
+        }
+        for rack in [ModRack::Mid, ModRack::Low] {
+            if fit.iter_modules(rack).next().is_some() {
+                return Err(SpoolTimeError::InvalidInput);
+            }
+        }
+        let (cycle_s, cap) = {
+            let mut modules = fit.iter_modules(ModRack::High);
+            let (cycle_s, cap) = {
+                let mut module = modules.next().ok_or(SpoolTimeError::InvalidInput)?;
+                if module.get_type_id() != id(47273)
+                    || module.get_state() != ModuleState::Active
+                    || module
+                        .get_charge()
+                        .is_none_or(|charge| charge.get_type_id() != id(47886))
+                {
+                    return Err(SpoolTimeError::InvalidInput);
+                }
+                let attr = |n| AttrId::Eve(EveAttrId::from_i32(n));
+                let optimal = module
+                    .get_attr(&attr(54))
+                    .map_err(|_| SpoolTimeError::InvalidInput)?
+                    .modified
+                    .into_f64();
+                let cycle_s = module
+                    .get_attr(&attr(51))
+                    .map_err(|_| SpoolTimeError::InvalidInput)?
+                    .modified
+                    .into_f64()
+                    / 1000.0;
+                let cap = module
+                    .get_spool_cycle_count()
+                    .ok_or(SpoolTimeError::InvalidInput)?
+                    .max
+                    .into_u32();
+                if !optimal.is_finite() || optimal < 10000.0 || !cycle_s.is_finite() || cycle_s < 1.0 || cap > 64 {
+                    return Err(SpoolTimeError::InvalidInput);
+                }
+                (cycle_s, cap)
+            };
+            if modules.next().is_some() {
+                return Err(SpoolTimeError::InvalidInput);
+            }
+            (cycle_s, cap)
+        };
+        let mut volleys = Vec::with_capacity(cap as usize + 1);
+        for index in 0..=cap {
+            if is_cancelled() {
+                return Err(SpoolTimeError::Cancelled);
+            }
+            let stats = fit.stats().get_stat_dmg(
+                Default::default(),
+                StatTimeOptions::Burst(StatTimeOptionsBurst {
+                    spool: Some(Spool::Cycles(Count::from_u32(index))),
+                }),
+                StatCritOptions::Exclude,
+            );
+            let v = stats.volley.em.into_f64()
+                + stats.volley.thermal.into_f64()
+                + stats.volley.kinetic.into_f64()
+                + stats.volley.explosive.into_f64();
+            if !v.is_finite() || v < 0.0 {
+                return Err(SpoolTimeError::InvalidInput);
+            }
+            volleys.push(v);
+        }
+        // Static within optimal: chance-to-hit is one; Pyfa includes wrecking hits.
+        let wreck = 0.01;
+        let application = wreck * 3.0 + (1.0 - wreck) * ((wreck + 1.0) / 2.0 + 0.49);
+        Ok(Self {
+            cycle_s,
+            application,
+            volleys,
+        })
+    }
+    pub fn sample(
+        &self,
+        times: &[f64],
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<SpoolTimeMarker>, SpoolTimeError> {
+        spool_time_markers(&self.volleys, self.cycle_s, self.application, times, is_cancelled)
+    }
+}
+
 #[cfg(test)]
 mod simulated_capacitor_tests {
     use super::SimulatedCapacitorGraph;
@@ -1062,5 +1350,17 @@ mod remote_repair_time_tests {
             before_gap.plot.unwrap(),
             [(48.1, 118.75), (56.0, 118.75), (56.0, 0.0), (50.0, 0.0)]
         );
+    }
+}
+
+#[cfg(test)]
+mod ecm_damp_stacking_tests {
+    use super::pyfa_ewar_multiplier;
+    #[test]
+    fn scan_damps_match_pinned_two_module_multiplier() {
+        let multiplier = pyfa_ewar_multiplier(&[-38.25, -38.25]).unwrap();
+        assert!((multiplier - 0.4122192925348261).abs() < 1e-14);
+        assert_eq!(pyfa_ewar_multiplier(&[]), Some(1.0));
+        assert!(pyfa_ewar_multiplier(&[1.0]).is_none());
     }
 }

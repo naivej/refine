@@ -1,10 +1,43 @@
 use crate::{
+    ad::AEffectId,
+    pyfa_graph::MissileMagazine,
     stats::{StatCritOptions, StatDmg, StatDmgApplied, StatDmgItemKinds, StatItemChargeOptions, StatTimeOptions},
-    svc::{Svc, SvcCtx, Vast, cycle::CseqCache, err::IntStatItemError},
+    svc::{
+        Svc, SvcCtx, Vast,
+        cycle::{CseqCache, CycleSeq, CyclingOptions, get_item_cseq_map},
+        err::IntStatItemError,
+    },
     ud::{UData, UFitId, UItemId},
 };
 
 impl Svc {
+    pub(crate) fn get_item_pyfa_missile_magazine(
+        &mut self,
+        cseq_cache: &mut CseqCache,
+        u_data: &UData,
+        item_uid: UItemId,
+    ) -> Option<MissileMagazine> {
+        let context = SvcCtx::new(u_data, &self.eff_projs);
+        let sequences = get_item_cseq_map(
+            cseq_cache,
+            &context,
+            &mut self.calc,
+            item_uid,
+            CyclingOptions::from_time_options(StatTimeOptions::Sim(Default::default())),
+        )?;
+        let (_, cycle) = sequences
+            .iter()
+            .find(|(effect, _)| u_data.r_data.get_effect_by_rid(*effect).aid == AEffectId::USE_MISSILES)?;
+        let CycleSeq::LoopLimSin(magazine) = cycle else {
+            return None;
+        };
+        let (cycle_s, cycles, reload_s) = magazine.full_magazine()?;
+        Some(MissileMagazine {
+            cycle_s,
+            cycles,
+            reload_s,
+        })
+    }
     pub(crate) fn get_stat_fits_dmg_raw(
         &mut self,
         cseq_cache: &mut CseqCache,

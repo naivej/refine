@@ -2,7 +2,7 @@ use crate::{
     Charge, Count, FitId, ItemCommon, ItemSpoolInfo, ModRack, ModuleState, OptionalReload, RackPos, Spool,
     api::ItemSealed,
     misc::InfCount,
-    pyfa_graph::RemoteRepairSchedule,
+    pyfa_graph::{MissileMagazine, RemoteRepairSchedule},
     sol::SolCore,
     ud::{UItemId, UModule},
 };
@@ -84,6 +84,17 @@ impl<'s> Module<'s> {
             &self.sol.u_data,
             self.uid,
         );
+        self.sol.internal_tx_rollback(savepoint);
+        result
+    }
+    /// Return the repeating, fully charged missile magazine and reload.
+    pub fn get_pyfa_missile_magazine(&mut self) -> Option<MissileMagazine> {
+        let savepoint = self.sol.internal_active_stat_prepare(self.uid);
+        self.sol.reuse.cseq_cache.clear();
+        let result =
+            self.sol
+                .svc
+                .get_item_pyfa_missile_magazine(&mut self.sol.reuse.cseq_cache, &self.sol.u_data, self.uid);
         self.sol.internal_tx_rollback(savepoint);
         result
     }

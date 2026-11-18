@@ -1,5 +1,5 @@
 use crate::{
-    Count, OptionalReload, PValue, UnitInterval,
+    Count, OptionalReload, PValue,
     ad::AEffectId,
     nd::NEffectGeneralOutputGetter,
     pyfa_graph::{RemoteRepairCycle, RemoteRepairReload, RemoteRepairSchedule},
@@ -7,7 +7,7 @@ use crate::{
     stats::{StatCritOptions, StatOutReps, StatTimeOptions, StatTimeOptionsSim},
     svc::{
         Calc, SvcCtx, Vast,
-        cycle::{CseqCache, CycleSeq, CyclingOptions, GetMainDuration, get_item_cseq_map},
+        cycle::{CseqCache, CycleSeq, CyclingOptions, get_item_cseq_map},
         err::IntStatItemError,
         vast::{
             aggr::{AggrIterData, SeqAccum, aggr_proj_burst, aggr_proj_iter, aggr_proj_looped, aggr_proj_time},
@@ -107,18 +107,12 @@ impl Vast {
                     None
                 }
                 CycleSeq::LoopLimSin(cycle)
-                    if ancillary
-                        && effect.aid == AEffectId::SHIP_MOD_ANCILLARY_REMOTE_SHIELD_BOOSTER
-                        && cycle.hard_dt.is_none()
-                        && cycle.p1_data.soft_dt.is_none()
-                        && cycle.p1_data.active.duration == cycle.p2_data.active.duration
-                        && cycle.p1_data.active.chargedness == Some(UnitInterval::ONE)
-                        && cycle.p2_data.active.chargedness == Some(UnitInterval::ONE) =>
+                    if ancillary && effect.aid == AEffectId::SHIP_MOD_ANCILLARY_REMOTE_SHIELD_BOOSTER =>
                 {
-                    cycle.p2_data.soft_dt.filter(|dt| dt.reasons.reload)?;
+                    let (_, magazine_cycles, duration_s) = cycle.full_magazine()?;
                     Some(RemoteRepairReload {
-                        magazine_cycles: cycle.p1_repeat_count.into_u32().checked_add(1)?,
-                        duration_s: (cycle.p2_data.get_main_duration() - cycle.p2_data.active.duration).into_f64(),
+                        magazine_cycles,
+                        duration_s,
                     })
                 }
                 _ => return None,
