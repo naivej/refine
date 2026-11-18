@@ -1,6 +1,6 @@
 use crate::{
     PValue,
-    nd::NEffectGeneralOutputGetter,
+    nd::{NEffectGeneralOutputGetter, NEffectProjMultGetter},
     rd::{REffectId, REffectProjOpcSpec},
     stats::{StatCritOptions, StatOutRepItemKinds, StatOutReps, StatTimeOptions},
     svc::{
@@ -121,6 +121,16 @@ fn get_orps(
             continue;
         }
         for (&effect_rid, ospec) in item_data.iter() {
+            let mut adjusted = *ospec;
+            if item_kinds.pyfa_graph_range_rounding()
+                && matches!(
+                    adjusted.proj_mult_str,
+                    Some(NEffectProjMultGetter::GenericRangeFullStsRestricted)
+                )
+            {
+                adjusted.proj_mult_str = Some(NEffectProjMultGetter::PyfaRepairGraphRange);
+            }
+            let ospec = &adjusted;
             let Some(cseq) = cseq_map.get(effect_rid) else {
                 continue;
             };

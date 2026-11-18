@@ -18,6 +18,7 @@ pub use neut::StatNeutItemKinds;
 pub use orps::{StatOutRepItemKinds, StatOutReps};
 pub use resource::StatResource;
 pub use sensors::{StatProbingSizeError, StatSensors, StatSensorsKind};
+pub(crate) use shared::{calc_regen, regenerate};
 pub use slot::StatSlot;
 pub use tank::{
     StatEhp, StatEhpLayer, StatErps, StatErpsLayer, StatErpsLayerRegen, StatHp, StatHpLayer, StatResists,

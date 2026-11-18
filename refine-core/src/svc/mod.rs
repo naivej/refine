@@ -4,6 +4,7 @@ pub(crate) use calc::Calc;
 pub(crate) use ctx::SvcCtx;
 pub(crate) use svc::Svc;
 use vast::Vast;
+pub(crate) use vast::{calc_regen, regenerate};
 
 mod api;
 pub(crate) mod calc;

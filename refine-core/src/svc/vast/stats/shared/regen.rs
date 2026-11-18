@@ -23,12 +23,12 @@ pub(in crate::svc::vast::stats) fn calc_regen_for_attrs(
     calc_regen(resource_max, regen_duration_s, resource_perc)
 }
 
-fn calc_regen(resource_max: PValue, recharge_duration: PValue, resource_perc: UnitInterval) -> PValue {
+pub(crate) fn calc_regen(resource_max: PValue, recharge_duration: PValue, resource_perc: UnitInterval) -> PValue {
     let resource_perc = resource_perc.into_pvalue();
     PValue::TEN * resource_max / recharge_duration * PValue::from_value_unchecked(resource_perc.sqrt() - resource_perc)
 }
 
 /// Regenerate resource, with decay being exp((t0 - t1) / tau).
-pub(in crate::svc::vast::stats) fn regenerate(c0: PValue, c_max: PValue, decay: PValue) -> PValue {
+pub(crate) fn regenerate(c0: PValue, c_max: PValue, decay: PValue) -> PValue {
     (Value::ONE + ((c0 / c_max).sqrt() - PValue::ONE) * decay).pow2() * c_max
 }

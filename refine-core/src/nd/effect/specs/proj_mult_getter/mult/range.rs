@@ -51,7 +51,16 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_std_full_restricted_ra
     effect: &REffect,
     proj_data: UProjData,
 ) -> PValue {
-    get_std_full_range_mult(ctx, calc, projector_uid, effect, proj_data.get_range_s2s(), true)
+    get_std_full_range_mult(ctx, calc, projector_uid, effect, proj_data.get_range_s2s(), true, false)
+}
+pub(in crate::nd::effect::specs::proj_mult_getter) fn get_pyfa_repair_graph_range_mult(
+    ctx: &SvcCtx,
+    calc: &mut Calc,
+    projector_uid: UItemId,
+    effect: &REffect,
+    proj_data: UProjData,
+) -> PValue {
+    get_std_full_range_mult(ctx, calc, projector_uid, effect, proj_data.get_range_s2s(), true, true)
 }
 pub(super) fn get_std_full_unrestricted_range_mult(
     ctx: &SvcCtx,
@@ -60,7 +69,15 @@ pub(super) fn get_std_full_unrestricted_range_mult(
     effect: &REffect,
     proj_data: UProjData,
 ) -> PValue {
-    get_std_full_range_mult(ctx, calc, projector_uid, effect, proj_data.get_range_s2s(), false)
+    get_std_full_range_mult(
+        ctx,
+        calc,
+        projector_uid,
+        effect,
+        proj_data.get_range_s2s(),
+        false,
+        false,
+    )
 }
 fn get_std_full_range_mult(
     ctx: &SvcCtx,
@@ -69,6 +86,7 @@ fn get_std_full_range_mult(
     effect: &REffect,
     proj_range: PValue,
     restricted: bool,
+    pyfa_graph: bool,
 ) -> PValue {
     let affector_optimal = get_effect_range(ctx, calc, projector_uid, effect.range_attr_rid);
     let affector_falloff = get_effect_range(ctx, calc, projector_uid, effect.falloff_attr_rid);
@@ -78,9 +96,18 @@ fn get_std_full_range_mult(
             match restricted && proj_range > affector_optimal + PValue::from_f64_unchecked(3.0) * affector_falloff {
                 true => PValue::ZERO,
                 false => {
-                    let exponent =
-                        (PValue::from_finite_value_clamped(proj_range - affector_optimal) / affector_falloff).powi(2);
-                    (-exponent).exp2()
+                    let distance_ratio =
+                        PValue::from_finite_value_clamped(proj_range - affector_optimal) / affector_falloff;
+                    if pyfa_graph {
+                        // Pyfa uses CPython pow for both powers before rounding to
+                        // seven significant digits. Rewrites to exp2 or multiplication
+                        // can change the rounded factor at a tie.
+                        let exponent = distance_ratio.into_f64().powf(std::hint::black_box(2.0));
+                        let base = std::hint::black_box(0.5_f64);
+                        pyfa_missile_round(PValue::from_f64_unchecked(base.powf(exponent)))
+                    } else {
+                        (-distance_ratio.powi(2)).exp2()
+                    }
                 }
             }
         }

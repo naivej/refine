@@ -11,7 +11,7 @@ pub use stats::{
     StatRpsLayer, StatRpsLayerRegen, StatSensors, StatSensorsKind, StatSlot, StatTime, StatTimeError, StatTimeOptions,
     StatTimeOptionsBurst, StatTimeOptionsSim, StatWarpSpeedError,
 };
-pub(crate) use stats::{StatCapBlcSrcKindsInt, StatCapSimStaggerInt};
+pub(crate) use stats::{StatCapBlcSrcKindsInt, StatCapSimStaggerInt, calc_regen, regenerate};
 pub use val::{
     ValActivationBlockedFail, ValCapitalModFail, ValCapitalModInfo, ValChargeGroupChargeInfo, ValChargeGroupFail,
     ValChargeSizeChargeInfo, ValChargeSizeFail, ValChargeVolumeChargeInfo, ValChargeVolumeFail, ValCloakingBlockedFail,

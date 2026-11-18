@@ -10,6 +10,8 @@ pub struct StatOutRepItemKinds {
     module: DefOption = DefOption::Default,
     #[cfg_attr(feature = "serde", serde(default))]
     minion: DefOption = DefOption::Default,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pyfa_graph_range_rounding: bool = false,
 }
 impl StatOutRepItemKinds {
     /// True to have all supported item kinds enabled by default, false to have them disabled.
@@ -18,6 +20,12 @@ impl StatOutRepItemKinds {
     }
     pub fn with_module(mut self, enabled: bool) -> Self {
         self.module = enabled.into();
+        self
+    }
+    /// Use Pyfa's per-source range factor for Remote Repairs graph points.
+    /// This affects applied outgoing repair stats only and defaults to false.
+    pub fn with_pyfa_graph_range_rounding(mut self, enabled: bool) -> Self {
+        self.pyfa_graph_range_rounding = enabled;
         self
     }
     pub fn with_minion(mut self, enabled: bool) -> Self {
@@ -31,6 +39,9 @@ const impl Default for StatOutRepItemKinds {
     }
 }
 impl StatOutRepItemKinds {
+    pub(in crate::svc::vast::stats) fn pyfa_graph_range_rounding(self) -> bool {
+        self.pyfa_graph_range_rounding
+    }
     pub(in crate::svc::vast::stats) fn resolve(self, u_item: &UItem) -> bool {
         match u_item {
             UItem::Drone(..) => self.minion.is_enabled(self.default),

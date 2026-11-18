@@ -113,6 +113,7 @@ pub mod err;
 mod misc;
 mod nd;
 mod num;
+pub mod pyfa_graph;
 mod rd;
 mod sol;
 pub mod src;

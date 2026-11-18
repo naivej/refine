@@ -8,8 +8,9 @@ use super::mult::{
     },
     range::{
         get_aoe_burst_range_mult, get_aoe_dd_round_range_mult, get_bomb_range_mult, get_fof_missile_range_mult,
-        get_missile_range_mult, get_pyfa_missile_range_mult, get_std_full_restricted_range_mult,
-        get_std_simple_c2s_range_mult, get_std_simple_s2s_range_mult, pyfa_missile_round,
+        get_missile_range_mult, get_pyfa_missile_range_mult, get_pyfa_repair_graph_range_mult,
+        get_std_full_restricted_range_mult, get_std_simple_c2s_range_mult, get_std_simple_s2s_range_mult,
+        pyfa_missile_round,
     },
 };
 use crate::{
@@ -28,6 +29,7 @@ pub(crate) enum NEffectProjMultGetter {
     GenericRangeSimpleCts,
     GenericRangeSimpleSts,
     GenericRangeFullStsRestricted,
+    PyfaRepairGraphRange,
     Turret,
     Disintegrator,
     Vorton,
@@ -68,6 +70,7 @@ impl NEffectProjMultGetter {
             Self::GenericRangeFullStsRestricted => {
                 get_std_full_restricted_range_mult(ctx, calc, projector_uid, effect, proj_data)
             }
+            Self::PyfaRepairGraphRange => get_pyfa_repair_graph_range_mult(ctx, calc, projector_uid, effect, proj_data),
             Self::Turret => {
                 get_turret_proj_mult(ctx, calc, projector_uid, effect, projectee_uid, proj_data, crit_options)
             }
@@ -139,7 +142,9 @@ impl NEffectProjMultGetter {
             Self::Null => [None, None],
             Self::GenericRangeSimpleCts => [a_effect.range_attr_id, None],
             Self::GenericRangeSimpleSts => [a_effect.range_attr_id, None],
-            Self::GenericRangeFullStsRestricted => [a_effect.range_attr_id, a_effect.falloff_attr_id],
+            Self::GenericRangeFullStsRestricted | Self::PyfaRepairGraphRange => {
+                [a_effect.range_attr_id, a_effect.falloff_attr_id]
+            }
             Self::Turret => [None, None],
             Self::Disintegrator => [None, None],
             Self::Vorton => [None, None],
