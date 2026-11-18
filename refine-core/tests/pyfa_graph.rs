@@ -1,6 +1,26 @@
 use refine_core::pyfa_graph::{BumpSample, EcmBurstScenario, MotionSample, lock_time_s, warp_time_s};
 
 #[test]
+fn mobility_tiny_times_keep_pyfa_rounding_before_momentum_and_bump() {
+    let (speed, mass, inertia) = (949.3228843769374, 1_613_000.0, 2.20725);
+    let tiny = MotionSample::at(1e-16, speed, mass, inertia).unwrap();
+    assert_eq!(tiny.speed_m_per_s, 0.0);
+    assert_eq!(tiny.distance_m, 0.0);
+    assert_eq!(tiny.momentum_kg_m_per_s, 0.0);
+    assert_eq!(
+        BumpSample::at(tiny.speed_m_per_s, mass, 1_103_000.0, 1e15)
+            .unwrap()
+            .target_distance_m,
+        0.0
+    );
+    let small = MotionSample::at(1e-8, speed, mass, inertia).unwrap();
+    assert_eq!(small.distance_m, 0.0);
+    assert!((small.momentum_kg_m_per_s - 4.300930426933899).abs() < 1e-12);
+    let bump = BumpSample::at(small.speed_m_per_s, mass, 1_103_000.0, 1e15).unwrap();
+    assert!((bump.target_distance_m - 3_493_318_307.0015397).abs() < 1e-3);
+}
+
+#[test]
 #[ignore = "requires the independent pinned Pyfa motion graph replay"]
 fn graph_primitives_match_pinned_pyfa_kinematics() {
     let file = std::env::var_os("RUFA_PYFA_MOTION_GRAPH_CASES").expect("set the Pyfa motion graph fixture");

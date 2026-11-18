@@ -13,6 +13,7 @@ const KG_PER_MILLION: f64 = 1_000_000.0;
 const ECM_BURST_PERIOD_S: f64 = 30.0;
 const DRONE_RELOCK_DELAY_S: f64 = 3.0;
 const MAX_ECM_CYCLES: u32 = 4096;
+const MAX_SIMULATED_CAPACITOR_PLOT_POINTS: usize = 8500;
 
 /// Passive shield or capacitor charge, in the same units as the supplied capacity.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,6 +51,148 @@ impl PassiveChargeSample {
     }
 }
 
+/// Pyfa's simulated capacitor curve, built from post-activation event points.
+pub struct SimulatedCapacitorGraph<'a> {
+    pub capacity: f64,
+    pub recharge_time_s: f64,
+    pub starting_amount: f64,
+    pub events: &'a [(f64, f64)],
+}
+
+/// Failure while producing a bounded simulated capacitor plot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SimulatedCapacitorPlotError {
+    InvalidInput,
+    ResolutionUnderflow,
+    PointLimit,
+    Cancelled,
+}
+
+impl SimulatedCapacitorGraph<'_> {
+    fn recharge(&self, start: f64, elapsed: f64) -> Option<f64> {
+        PassiveChargeSample::at(elapsed, self.capacity, self.recharge_time_s, start).map(|s| s.amount)
+    }
+
+    /// Markers at and after the final event are absent in Pyfa.
+    pub fn marker(&self, time: f64) -> Option<f64> {
+        if !nonnegative(time) {
+            return None;
+        }
+        let index = self.events.partition_point(|event| event.0 <= time);
+        if !self.events.is_empty() && index == self.events.len() {
+            return None;
+        }
+        if index == 0 {
+            self.recharge(self.starting_amount, time)
+        } else {
+            let (t, cap) = self.events[index - 1];
+            if t == time {
+                Some(cap)
+            } else {
+                self.recharge(cap, time - t)
+            }
+        }
+    }
+
+    /// Pyfa's 200-resolution plot, including both sides of every event jump.
+    /// Work is bounded before each interval and cancellation is checked per point.
+    pub fn plot(
+        &self,
+        lower: f64,
+        upper: f64,
+        max_points: usize,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<Vec<(f64, f64)>, SimulatedCapacitorPlotError> {
+        use SimulatedCapacitorPlotError as Error;
+        if !nonnegative(lower) || !nonnegative(upper) || lower > upper {
+            return Err(Error::InvalidInput);
+        }
+        let max_points = max_points.min(MAX_SIMULATED_CAPACITOR_PLOT_POINTS);
+        let mut points = Vec::new();
+        let mut push = |time, cap| {
+            if is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if points.len() >= max_points {
+                return Err(Error::PointLimit);
+            }
+            points.push((time, cap));
+            Ok(())
+        };
+        if self.events.is_empty() {
+            let step = (upper - lower) / 200.0;
+            // Pyfa's smooth getter emits one point when its step underflows.
+            let last_index = if step == 0.0 { 0 } else { 200 };
+            if last_index + 1 > max_points {
+                return Err(Error::PointLimit);
+            }
+            for i in 0..=last_index {
+                let time = lower + step * i as f64;
+                let cap = self.recharge(self.starting_amount, time).ok_or(Error::InvalidInput)?;
+                push(time, cap)?;
+            }
+            return Ok(points);
+        }
+        let last = self.events.last().ok_or(Error::InvalidInput)?.0;
+        if lower > last {
+            return Ok(points);
+        }
+        let end = upper.min(last);
+        let spacing = (end - lower) / 200.0;
+        // A final event exactly at the lower bound has no interpolation interval.
+        if end > lower && spacing == 0.0 {
+            return Err(Error::ResolutionUnderflow);
+        }
+        let before = self.events.partition_point(|e| e.0 < lower);
+        let (mut prev_time, mut prev_cap) = if before == 0 {
+            (
+                lower,
+                self.recharge(self.starting_amount, lower).ok_or(Error::InvalidInput)?,
+            )
+        } else {
+            let (time, cap) = self.events[before - 1];
+            (lower, self.recharge(cap, lower - time).ok_or(Error::InvalidInput)?)
+        };
+        push(prev_time, prev_cap)?;
+        // Cap the number of loop iterations before converting float counts or sampling.
+        let mut generated = 1usize;
+        for &(time, cap) in self.events[before..].iter().take_while(|e| e.0 <= end) {
+            if time > prev_time {
+                let count = ((time - prev_time) / spacing).ceil();
+                if !count.is_finite() || count > max_points.saturating_sub(generated) as f64 {
+                    return Err(Error::PointLimit);
+                }
+                let count = count as usize;
+                let length = (time - prev_time) / count as f64;
+                for i in 1..=count {
+                    let t = prev_time + length * i as f64;
+                    let value = self.recharge(prev_cap, t - prev_time).ok_or(Error::InvalidInput)?;
+                    push(t, value)?;
+                }
+                generated += count;
+            }
+            push(time, cap)?;
+            generated += 1;
+            prev_time = time;
+            prev_cap = cap;
+        }
+        if end > prev_time {
+            let count = ((end - prev_time) / spacing).ceil();
+            if !count.is_finite() || count > max_points.saturating_sub(generated) as f64 {
+                return Err(Error::PointLimit);
+            }
+            let count = count as usize;
+            let length = (end - prev_time) / count as f64;
+            for i in 1..=count {
+                let t = prev_time + length * i as f64;
+                let value = self.recharge(prev_cap, t - prev_time).ok_or(Error::InvalidInput)?;
+                push(t, value)?;
+            }
+        }
+        Ok(points)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MotionSample {
     pub distance_m: f64,
@@ -68,9 +211,14 @@ impl MotionSample {
         if !positive(time_constant) {
             return None;
         }
-        let speed_fraction = -(-seconds / time_constant).exp_m1();
-        let speed_m_per_s = max_speed_m_per_s * speed_fraction;
-        let distance_m = max_speed_m_per_s * (seconds - time_constant * speed_fraction);
+        // Preserve the operation order of Pyfa's registered Mobility getters.
+        // In particular, 1 - exp(x) rounds to zero at sufficiently small times.
+        let exponent = (-seconds * KG_PER_MILLION) / (inertia * mass_kg);
+        let decay = exponent.exp();
+        let speed_m_per_s = max_speed_m_per_s * (1.0 - decay);
+        let distance_t = max_speed_m_per_s * seconds + (max_speed_m_per_s * inertia * mass_kg * decay / KG_PER_MILLION);
+        let distance_0 = max_speed_m_per_s * inertia * mass_kg / KG_PER_MILLION;
+        let distance_m = distance_t - distance_0;
         let momentum_kg_m_per_s = speed_m_per_s * mass_kg;
         if ![distance_m, speed_m_per_s, momentum_kg_m_per_s]
             .into_iter()
@@ -236,4 +384,130 @@ fn positive(value: f64) -> bool {
 
 fn nonnegative(value: f64) -> bool {
     value.is_finite() && value >= 0.0
+}
+
+#[cfg(test)]
+mod simulated_capacitor_tests {
+    use super::SimulatedCapacitorGraph;
+
+    #[test]
+    fn final_event_is_a_plot_jump_but_not_a_marker() {
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 100.0,
+            events: &[(0.0, 90.0), (10.0, 80.0)],
+        };
+        assert_eq!(graph.marker(0.0), Some(90.0));
+        assert_eq!(graph.marker(10.0), None);
+        assert_eq!(graph.marker(11.0), None);
+        let plot = graph.plot(0.0, 20.0, 8500, &|| false).unwrap();
+        assert_eq!(plot[0], (0.0, 100.0));
+        assert_eq!(plot[1], (0.0, 90.0));
+        assert_eq!(*plot.last().unwrap(), (10.0, 80.0));
+        assert!(graph.plot(11.0, 20.0, 8500, &|| false).unwrap().is_empty());
+    }
+
+    #[test]
+    fn empty_events_fall_back_to_passive_plot_and_marker() {
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 0.0,
+            events: &[],
+        };
+        let plot = graph.plot(0.0, 100.0, 8500, &|| false).unwrap();
+        assert_eq!(plot.len(), 201);
+        assert_eq!(graph.marker(100.0), Some(plot[200].1));
+    }
+    #[test]
+    fn subnormal_active_plot_rejects_resolution_underflow_before_sampling() {
+        use super::SimulatedCapacitorPlotError;
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 100.0,
+            events: &[(0.0, 90.0), (1.0, 80.0)],
+        };
+        assert_eq!(
+            graph.plot(0.0, f64::from_bits(1), 8500, &|| false),
+            Err(SimulatedCapacitorPlotError::ResolutionUnderflow)
+        );
+        let endpoint = SimulatedCapacitorGraph {
+            events: &[(0.0, 90.0)],
+            ..graph
+        };
+        assert_eq!(
+            endpoint.plot(0.0, 1.0, 8500, &|| false).unwrap(),
+            [(0.0, 100.0), (0.0, 90.0)]
+        );
+    }
+
+    #[test]
+    fn plot_checks_cancellation_at_each_point_and_limits_work() {
+        use std::cell::Cell;
+
+        use super::SimulatedCapacitorPlotError;
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 100.0,
+            events: &[(0.0, 90.0), (10.0, 80.0)],
+        };
+        let checks = Cell::new(0);
+        let result = graph.plot(0.0, 20.0, 8500, &|| {
+            checks.set(checks.get() + 1);
+            checks.get() == 4
+        });
+        assert_eq!(result, Err(SimulatedCapacitorPlotError::Cancelled));
+        assert_eq!(checks.get(), 4);
+        assert_eq!(
+            graph.plot(0.0, 20.0, 3, &|| false),
+            Err(SimulatedCapacitorPlotError::PointLimit)
+        );
+    }
+    #[test]
+    fn passive_zero_step_returns_one_lower_point() {
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 0.0,
+            events: &[],
+        };
+        assert_eq!(
+            graph.plot(0.0, f64::from_bits(1), 8500, &|| false).unwrap(),
+            [(0.0, 0.0)]
+        );
+    }
+    #[test]
+    fn singleton_active_plot_retains_event_jump_and_is_empty_after_tail() {
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 100.0,
+            events: &[(0.0, 90.0), (10.0, 80.0)],
+        };
+        let event = graph.plot(10.0, 10.0, 8500, &|| false).unwrap();
+        assert_eq!(event.len(), 2);
+        assert_eq!(event[0].0, 10.0);
+        assert_eq!(event[1], (10.0, 80.0));
+        assert_eq!(graph.marker(10.0), None);
+        assert_eq!(graph.plot(5.0, 5.0, 8500, &|| false).unwrap().len(), 1);
+        assert!(graph.plot(11.0, 11.0, 8500, &|| false).unwrap().is_empty());
+    }
+    #[test]
+    fn plot_enforces_absolute_point_cap_even_if_caller_requests_more() {
+        use super::SimulatedCapacitorPlotError;
+        let events = vec![(0.0, 90.0); 8501];
+        let graph = SimulatedCapacitorGraph {
+            capacity: 100.0,
+            recharge_time_s: 100.0,
+            starting_amount: 100.0,
+            events: &events,
+        };
+        assert_eq!(
+            graph.plot(0.0, 1.0, usize::MAX, &|| false),
+            Err(SimulatedCapacitorPlotError::PointLimit)
+        );
+    }
 }
