@@ -2,6 +2,7 @@ use std::iter::once;
 
 use super::{
     breacher::{AppliedBreacherAccum, BreacherAccum, RegularBreacherAccum},
+    pyfa_fighter::get_pyfa_fighter_damage,
     shared::add_normal_dmg,
 };
 use crate::{
@@ -179,10 +180,18 @@ impl VastFitData {
         projectee_uid: Option<UItemId>,
     ) {
         for (&item_uid, item_data) in self.dmg_normal.iter() {
+            let item = ctx.u_data.items.get(item_uid);
+            if projectee_uid.is_none()
+                && let Some((dps, volley)) =
+                    get_pyfa_fighter_damage(ctx, calc, item_uid, item, time_options, Some(item_kinds))
+            {
+                *dps_normal += dps;
+                *volley_normal += volley;
+                continue;
+            }
             let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, item_uid, cycling_options) else {
                 continue;
             };
-            let item = ctx.u_data.items.get(item_uid);
             for (&effect_rid, ospec) in item_data.iter() {
                 let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
                 if !item_kinds.resolve(item, effect)

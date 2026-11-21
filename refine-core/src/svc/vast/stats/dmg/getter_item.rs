@@ -1,5 +1,6 @@
 use super::{
     breacher::{AppliedBreacherAccum, BreacherAccum, RegularBreacherAccum},
+    pyfa_fighter::get_pyfa_fighter_damage,
     shared::add_normal_dmg,
 };
 use crate::{
@@ -99,6 +100,14 @@ impl Vast {
         B: BreacherAccum,
     {
         check_autocharge_charge_drone_fighter_module(ctx.u_data, item_uid)?;
+        if projectee_uid.is_none()
+            && let Some((dps, volley)) =
+                get_pyfa_fighter_damage(ctx, calc, item_uid, ctx.u_data.items.get(item_uid), time_options, None)
+        {
+            *dps_normal += dps;
+            *volley_normal += volley;
+            return Ok(());
+        }
         let cycling_options = CyclingOptions::from_time_options(time_options);
         let Some(cseq_map) = get_item_cseq_map(cseq_cache, ctx, calc, item_uid, cycling_options) else {
             return Ok(());

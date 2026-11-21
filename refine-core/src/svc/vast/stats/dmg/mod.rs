@@ -5,5 +5,6 @@ mod breacher;
 mod getter_fit;
 mod getter_item;
 mod option;
+mod pyfa_fighter;
 mod shared;
 mod stat;
