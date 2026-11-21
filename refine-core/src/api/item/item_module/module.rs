@@ -66,23 +66,21 @@ impl<'s> Module<'s> {
     /// Return the immediate output and duration of an ordinary uninterrupted shield-repair cycle.
     /// Returns None for unsupported cycle shapes or outputs.
     pub fn get_pyfa_simple_shield_cycle(&mut self) -> Option<(f64, f64)> {
-        let savepoint = self.sol.internal_active_stat_prepare(self.uid);
-        self.sol.reuse.cseq_cache.clear();
-        let result =
-            self.sol
-                .svc
-                .get_item_pyfa_simple_shield_cycle(&mut self.sol.reuse.cseq_cache, &self.sol.u_data, self.uid);
-        self.sol.internal_tx_rollback(savepoint);
-        result
+        let cycle = self.get_pyfa_shield_schedule(false)?.cycle;
+        Some((cycle.duration_s, cycle.amount_hp))
     }
     /// Return the fully charged cycle and reload of a repeating ancillary shield repair.
     pub fn get_pyfa_ancillary_shield_schedule(&mut self) -> Option<RemoteRepairSchedule> {
+        self.get_pyfa_shield_schedule(true)
+    }
+    fn get_pyfa_shield_schedule(&mut self, ancillary: bool) -> Option<RemoteRepairSchedule> {
         let savepoint = self.sol.internal_active_stat_prepare(self.uid);
         self.sol.reuse.cseq_cache.clear();
-        let result = self.sol.svc.get_item_pyfa_ancillary_shield_schedule(
+        let result = self.sol.svc.get_item_pyfa_shield_schedule(
             &mut self.sol.reuse.cseq_cache,
             &self.sol.u_data,
             self.uid,
+            ancillary,
         );
         self.sol.internal_tx_rollback(savepoint);
         result

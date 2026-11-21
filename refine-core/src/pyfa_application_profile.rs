@@ -1,4 +1,6 @@
-//! Draft bounded Kestrel application-profile calculation; not a published contract.
+//! Missile damage and range calculations for the qualified Kestrel application profiles.
+use crate::pyfa_graph::pyfa_tick_range;
+
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub name: String,
@@ -49,10 +51,6 @@ fn volley(c: &Charge, d: f64, speed: f64, sig: f64) -> f64 {
         }
     }
     c.raw * range * app
-}
-pub(crate) fn pyfa_tick_range(speed: f64, mass: f64, agility: f64, radius: f64, tick: f64) -> f64 {
-    let t = tick.min(mass * agility / 1e6);
-    (speed / 2.0 * t + speed * (tick - t) - radius).max(0.0)
 }
 fn build_charges(
     candidates: &[Candidate],
@@ -115,12 +113,13 @@ pub fn kestrel_profile(
     include_plot: bool,
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<Profile, &'static str> {
-    if !matches!(candidates.len(), 9 | 13 | 25)
-        || !matches!(target, (350.0, 38.0) | (60.0, 400.0))
-        || !matches!(
-            resist,
-            [0.0, 0.0, 0.0, 0.0] | [0.6, 0.1, 0.0, 0.9] | [0.0, 0.0, 1.0, 0.0]
-        )
+    if candidates.is_empty()
+        || candidates.len() > 25
+        || !target.0.is_finite()
+        || target.0 < 0.0
+        || !target.1.is_finite()
+        || target.1 <= 0.0
+        || resist.iter().any(|r| !(0.0..=1.0).contains(r))
         || markers.len() > 201
         || markers.iter().any(|x| !x.is_finite() || !(0.0..=100000.0).contains(x))
     {
@@ -241,7 +240,7 @@ pub fn prepare_kestrel_t2_crossover(
     loaded: &LoadedModifiers,
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<PreparedT2Crossover, &'static str> {
-    if candidates.len() != 33 {
+    if candidates.is_empty() || candidates.len() > 33 {
         return Err("outside qualified T2 crossover scope");
     }
     if is_cancelled() {
@@ -328,10 +327,7 @@ pub fn prepare_kestrel_t2_crossover(
         }
         d += scan_step;
     }
-    if changes.len() != 2
-        || charges[changes[0].1].name != "Mjolnir Fury Light Missile"
-        || charges[changes[1].1].name != "Dread Guristas Mjolnir Light Missile"
-    {
+    if changes.len() != 2 {
         return Err("outside qualified T2 crossover configuration");
     }
     Ok(PreparedT2Crossover {
@@ -421,18 +417,6 @@ pub fn sample_kestrel_t2_crossover(
         markers: result_markers,
         segments,
     })
-}
-
-/// Standalone convenience path; callers serving repeated samples should retain the prepared state.
-pub fn kestrel_t2_crossover(
-    candidates: &[Candidate],
-    loaded: &LoadedModifiers,
-    markers: &[f64],
-    include_plot: bool,
-    is_cancelled: &dyn Fn() -> bool,
-) -> Result<CrossoverProfile, &'static str> {
-    let prepared = prepare_kestrel_t2_crossover(candidates, loaded, is_cancelled)?;
-    sample_kestrel_t2_crossover(&prepared, markers, include_plot, is_cancelled)
 }
 
 #[cfg(test)]

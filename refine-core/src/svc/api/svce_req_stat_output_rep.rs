@@ -62,31 +62,19 @@ impl Svc {
             projectee_uid,
         )
     }
-    pub(crate) fn get_item_pyfa_simple_shield_cycle(
+    pub(crate) fn get_item_pyfa_shield_schedule(
         &mut self,
         cseq_cache: &mut CseqCache,
         u_data: &UData,
         item_uid: UItemId,
-    ) -> Option<(f64, f64)> {
-        Vast::get_item_pyfa_simple_shield_cycle(
-            cseq_cache,
-            &SvcCtx::new(u_data, &self.eff_projs),
-            &mut self.calc,
-            item_uid,
-        )
-    }
-    pub(crate) fn get_item_pyfa_ancillary_shield_schedule(
-        &mut self,
-        cseq_cache: &mut CseqCache,
-        u_data: &UData,
-        item_uid: UItemId,
+        ancillary: bool,
     ) -> Option<RemoteRepairSchedule> {
         Vast::get_item_pyfa_shield_schedule(
             cseq_cache,
             &SvcCtx::new(u_data, &self.eff_projs),
             &mut self.calc,
             item_uid,
-            true,
+            ancillary,
         )
     }
     pub(crate) fn get_stat_fits_outgoing_cps(

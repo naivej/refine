@@ -61,18 +61,6 @@ impl Vast {
 }
 
 impl Vast {
-    /// A single, immediate, uncharged, uninterrupted repeating shield repair cycle.
-    /// Other cycle shapes are intentionally outside this narrow graph trial.
-    pub(in crate::svc) fn get_item_pyfa_simple_shield_cycle(
-        cseq_cache: &mut CseqCache,
-        ctx: &SvcCtx,
-        calc: &mut Calc,
-        item_uid: UItemId,
-    ) -> Option<(f64, f64)> {
-        let schedule = Self::get_item_pyfa_shield_schedule(cseq_cache, ctx, calc, item_uid, false)?;
-        Some((schedule.cycle.duration_s, schedule.cycle.amount_hp))
-    }
-
     /// Resolve an immediate ordinary cycle or a fully charged, equal-cycle ancillary magazine.
     pub(in crate::svc) fn get_item_pyfa_shield_schedule(
         cseq_cache: &mut CseqCache,

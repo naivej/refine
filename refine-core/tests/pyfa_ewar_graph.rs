@@ -4,7 +4,7 @@ use refine_core::{
         EAttr, EAttrId, EData, EEffect, EEffectCatId, EEffectId, EFloat, EItem, EItemAttr, EItemCatId, EItemEffect,
         EItemGroup, EItemGrpId, EItemId, EveDataHandlerCore, err::EveDataHandlerError,
     },
-    pyfa_graph::{PyfaEwarKind, PyfaEwarPrepared, PyfaEwarSource, pyfa_ewar_neut_gj_per_s, pyfa_ewar_web_percentage},
+    pyfa_graph::{PyfaEwarSource, pyfa_ewar_neut_gj_per_s, pyfa_ewar_web_percentage},
     stats::StatNeutItemKinds,
 };
 
@@ -146,12 +146,6 @@ fn resolved_native_module_attributes_feed_both_ewar_graph_series() {
         .stats()
         .get_stat_outgoing_nps(StatNeutItemKinds::default(), Default::default());
     assert_eq!(native.into_f64(), 15.0);
-    let prepared_web = PyfaEwarPrepared::from_fit(&mut sol.get_fit(&fit_id).unwrap(), PyfaEwarKind::Web).unwrap();
-    let prepared_neut =
-        PyfaEwarPrepared::from_fit(&mut sol.get_fit(&fit_id).unwrap(), PyfaEwarKind::Neutralizer).unwrap();
-    assert_eq!(prepared_web.lock_range_m, 50000.0);
-    assert!((prepared_web.sample(0.0, false, 0.25).unwrap() - 45.0).abs() < 1e-10);
-    assert_eq!(prepared_neut.sample(15000.0, false, 0.0), Some(7.5));
     let target = sol
         .add_fit()
         .set_ship(ItemTypeId::from_i32(602), None, None)

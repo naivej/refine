@@ -3,6 +3,8 @@ Rust Eve FIttiNg Engine
 
 The engine's purpose is validation of fits and calculation of item/fit/fleet stats. It does not do much else - i.e. there is no fit persistence, or anything related to UI (for instance, it is not aware of item/fit names).
 
+The `pyfa-parity` fork records the changes it carries, their regression cases and when to retire them in the [Pyfa patch ledger](docs/pyfa-patches.md).
+
 # Crate Layout
 
 ### refine-core

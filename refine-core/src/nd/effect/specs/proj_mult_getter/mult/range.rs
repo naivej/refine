@@ -199,7 +199,7 @@ impl MissileFlight {
     fn pyfa_range_mult_for_duration(&self, overview_m: f64, ship_radius_m: f64, duration: f64) -> PValue {
         let speed = self.max_velocity.into_f64();
         let range_at = |tick: f64| {
-            crate::pyfa_application_profile::pyfa_tick_range(
+            crate::pyfa_graph::pyfa_tick_range(
                 speed,
                 self.mass.into_f64(),
                 self.agility.into_f64(),
