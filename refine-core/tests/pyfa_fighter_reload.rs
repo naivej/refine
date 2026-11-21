@@ -2,8 +2,8 @@ use std::{collections::BTreeSet, env, fs};
 
 use refine_core::{
     AbilityId, AddMode, AttrId, Coordinates, CountNz, Direction, DogmaEffectId, EffectId, EffectMode, EveAttrId, Fit,
-    ItemCommon, ItemTypeId, MinionState, ModRack, ModuleState, Movement, PValue, RearmMinion, SkillLevel, SolOwned,
-    Src, Value,
+    ItemCommon, ItemId, ItemTypeId, MinionState, ModRack, ModuleState, Movement, PValue, RearmMinion, SkillLevel,
+    SolOwned, Src, Value,
     ed::{
         EAbil, EAbilId, EAttr, EAttrId, EData, EEffect, EEffectCatId, EEffectId, EEffectMod, EEffectModArg, EFloat,
         EInt, EItem, EItemAbil, EItemAttr, EItemCatId, EItemEffect, EItemGroup, EItemGrpId, EItemId, EPrimitive,
@@ -295,6 +295,28 @@ fn check_damage(case: &str, actual: [f64; 2], expected: [f64; 2]) {
     }
 }
 
+fn projected_firbolg<'a>(sol: &'a mut SolOwned, effects: &[i32]) -> (Fit<'a>, ItemId, ItemId) {
+    let origin = Coordinates::new(Value::default(), Value::default(), Value::default());
+    let target = sol
+        .add_fit()
+        .set_ship(ItemTypeId::from_i32(KESTREL), Some(origin), None)
+        .get_item_id();
+    sol.get_ship(&target).unwrap().set_movement(Movement {
+        direction: Direction {
+            azimuth: Value::default(),
+            elevation: Value::default(),
+        },
+        speed: PValue::from_f64_checked(350.0 / 325.0).unwrap(),
+    });
+    let mut fit = create_fit(sol, false);
+    let mut fighter = fit.add_fighter(ItemTypeId::from_i32(FIRBOLG), MinionState::Engaging, Some(origin), None);
+    fighter.set_count_override(Some(CountNz::from_u32_checked(6).unwrap()));
+    set_abilities(&mut fighter, effects);
+    fighter.add_proj(&target).unwrap();
+    let fighter_id = fighter.get_item_id();
+    (fit, target, fighter_id)
+}
+
 #[test]
 fn fighter_application_rounding_is_per_attack_and_opt_in() {
     let source = Src::new(&FirbolgData::default().into(), None).unwrap();
@@ -316,23 +338,7 @@ fn fighter_application_rounding_is_per_attack_and_opt_in() {
             (SolOwned::new_with_pyfa_compatibility(&source), "Pyfa", pyfa),
             (SolOwned::new_with_pyfa_fitting_rounding(&source), "native", native),
         ] {
-            let origin = Coordinates::new(Value::default(), Value::default(), Value::default());
-            let target = sol
-                .add_fit()
-                .set_ship(ItemTypeId::from_i32(KESTREL), Some(origin), None)
-                .get_item_id();
-            sol.get_ship(&target).unwrap().set_movement(Movement {
-                direction: Direction {
-                    azimuth: Value::default(),
-                    elevation: Value::default(),
-                },
-                speed: PValue::from_f64_checked(350.0 / 325.0).unwrap(),
-            });
-            let mut fit = create_fit(&mut sol, false);
-            let mut fighter = fit.add_fighter(ItemTypeId::from_i32(FIRBOLG), MinionState::Engaging, Some(origin), None);
-            fighter.set_count_override(Some(CountNz::from_u32_checked(6).unwrap()));
-            set_abilities(&mut fighter, &[effect]);
-            fighter.add_proj(&target).unwrap();
+            let (mut fit, target, _) = projected_firbolg(&mut sol, &[effect]);
             let applied = fit
                 .stats()
                 .get_stat_dmg_applied(
@@ -344,6 +350,44 @@ fn fighter_application_rounding_is_per_attack_and_opt_in() {
                 .unwrap();
             check_damage(
                 &format!("{label} effect {effect}"),
+                [applied.dps.thermal.into_f64(), applied.volley.thermal.into_f64()],
+                expected,
+            );
+        }
+    }
+}
+
+#[test]
+fn fighter_reload_chooses_the_schedule_before_application() {
+    let source = Src::new(&FirbolgData::default().into(), None).unwrap();
+    let reload = time_options(None, RearmMinion::OnFirstEmpty);
+    // Stock Pyfa v2.70.0 Damage Stats at 350 m/s and signature 38 m. The coordinated
+    // schedule wins on raw DPS even though turret-only deals more after application.
+    for (label, effects, expected) in [
+        ("both", &[TURRET, MISSILES][..], [44.145532581872175, 331.610492953125]),
+        ("turret", &[TURRET], [52.516698046875, 262.583490234375]),
+        ("missile", &[MISSILES], [3.74807254581448, 69.02700271875]),
+    ] {
+        let mut sol = SolOwned::new_with_pyfa_compatibility(&source);
+        let (mut fit, target, fighter_id) = projected_firbolg(&mut sol, effects);
+        let fitted = fit
+            .stats()
+            .get_stat_dmg_applied(Default::default(), reload, StatCritOptions::Exclude, &target)
+            .unwrap();
+        let fighter = sol
+            .get_fighter(&fighter_id)
+            .unwrap()
+            .stats()
+            .get_stat_dmg_applied(
+                reload,
+                StatCritOptions::Exclude,
+                StatItemChargeOptions::Exclude,
+                &target,
+            )
+            .unwrap();
+        for applied in [fitted, fighter] {
+            check_damage(
+                label,
                 [applied.dps.thermal.into_f64(), applied.volley.thermal.into_f64()],
                 expected,
             );

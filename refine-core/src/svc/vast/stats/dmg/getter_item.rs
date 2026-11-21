@@ -100,10 +100,16 @@ impl Vast {
         B: BreacherAccum,
     {
         check_autocharge_charge_drone_fighter_module(ctx.u_data, item_uid)?;
-        if projectee_uid.is_none()
-            && let Some((dps, volley)) =
-                get_pyfa_fighter_damage(ctx, calc, item_uid, ctx.u_data.items.get(item_uid), time_options, None)
-        {
+        if let Some((dps, volley)) = get_pyfa_fighter_damage(
+            cseq_cache,
+            ctx,
+            calc,
+            item_uid,
+            ctx.u_data.items.get(item_uid),
+            time_options,
+            None,
+            projectee_uid.map(|uid| (uid, crit_options)),
+        ) {
             *dps_normal += dps;
             *volley_normal += volley;
             return Ok(());

@@ -181,10 +181,16 @@ impl VastFitData {
     ) {
         for (&item_uid, item_data) in self.dmg_normal.iter() {
             let item = ctx.u_data.items.get(item_uid);
-            if projectee_uid.is_none()
-                && let Some((dps, volley)) =
-                    get_pyfa_fighter_damage(ctx, calc, item_uid, item, time_options, Some(item_kinds))
-            {
+            if let Some((dps, volley)) = get_pyfa_fighter_damage(
+                cseq_cache,
+                ctx,
+                calc,
+                item_uid,
+                item,
+                time_options,
+                Some(item_kinds),
+                projectee_uid.map(|uid| (uid, crit_options)),
+            ) {
                 *dps_normal += dps;
                 *volley_normal += volley;
                 continue;
