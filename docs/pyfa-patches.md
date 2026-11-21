@@ -31,6 +31,10 @@ Each row identifies the introducing commit or milestone, the reason to carry the
 | `4ad613dff` · Charge size | The Small Ancillary Shield Booster accepts Cap Booster 25 with no size in both engines. Pyfa also accepts size-1 Cap Booster 50 because the module's size requirement is zero. Rufa keeps its Pyfa size check so that charge is accepted. The positive requirement on the Medium Ancillary Shield Booster admits size 1 and rejects the sizeless charge. |
 | `0bbe04a24`, `6ca148e1c` · Online effect | The native validation of an attempted activation compares 200mm Steel Plates I and Small Armor Repairer I with the pinned Pyfa results. |
 
+## November 22 upstream update
+
+The November 22 M8.24 review compared three upstream commits through `656a56ebb` with `6ca148e1c`. Upstream `885c7861c` honors an explicitly acknowledged stance failure on a fit without a ship. The two other commits add lookups on validation and stat results. These changes apply intact alongside the patches above.
+
 ## Updating this ledger
 
 For a new patch, record the first release milestone, originating commit, affected upstream code, and smallest test that fails without it. When upstream passes that test, remove the equivalent local hunk on the integration branch and replay the affected workflows. Mark the row retired with the replacing upstream revision and first qualified Rufa pin. For a mixed patch, update the affected rows independently. Keep build tuples, release decisions and cross-product pilot results in the [development repository](https://github.com/naivej/rufa_dev).
