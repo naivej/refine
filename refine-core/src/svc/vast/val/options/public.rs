@@ -254,8 +254,16 @@ impl<I> ValOptions<I> {
         self
     }
     /// Fails when in-space drones take more bandwidth than ship provides.
-    pub fn with_drone_bandwidth(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
-        self.overrides.push((ValKind::DroneBandwidth, option));
+    pub fn with_drone_bandwidth_current(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
+        self.overrides.push((ValKind::DroneBandwidthCurrent, option));
+        self
+    }
+    /// Fails when in-space drones take more bandwidth than ship can provide.
+    ///
+    /// It passes when total drone bandwidth is not above max in fit's current state, or with
+    /// player-controllable bandwidth reduction items (nullifiers, warp core stabilizers) disabled.
+    pub fn with_drone_bandwidth_potential(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
+        self.overrides.push((ValKind::DroneBandwidthPotential, option));
         self
     }
     /// Fails when fit has any drones when ship supports none.
@@ -263,7 +271,8 @@ impl<I> ValOptions<I> {
         self.overrides.push((ValKind::UnlaunchableDroneSlot, option));
         self
     }
-    /// Fails when fit has any drones which take more bandwidth than ship provides.
+    /// Fails when fit has any drones which take more bandwidth than ship can provide (potential
+    /// bandwidth, like in the potential drone bandwidth validation).
     pub fn with_unlaunchable_drone_bandwidth(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
         self.overrides.push((ValKind::UnlaunchableDroneBandwidth, option));
         self
@@ -277,9 +286,16 @@ impl<I> ValOptions<I> {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Fighters
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    /// Fails when fighters take more volume than ship's fighter bay has.
-    pub fn with_fighter_bay_volume(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
-        self.overrides.push((ValKind::FighterBayVolume, option));
+    /// Fails when all fighters, regardless of their state, take more volume than ship's fighter bay
+    /// has.
+    pub fn with_fighter_bay_volume_all(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
+        self.overrides.push((ValKind::FighterBayVolumeAll, option));
+        self
+    }
+    /// Fails when fighters which are strictly in "in bay" state (not loaded into tubes) take more
+    /// volume than ship's fighter bay has.
+    pub fn with_fighter_bay_volume_inbay(mut self, option: OptionExt<ValEnabled<I>>) -> Self {
+        self.overrides.push((ValKind::FighterBayVolumeInbay, option));
         self
     }
     /// Fails when fit has more in-space fighters than ship supports.
@@ -482,8 +498,8 @@ impl<I> ValEnabled<I> {
     }
     /// Known failures of a validation.
     ///
-    /// Every validation failure is attached to an item. Failures of items listed here do not fail
-    /// the validation: if all its failures are known, it is passed.
+    /// Every validation failure is attached to an item. Items listed here will not be returned as
+    /// validation failures. If all validation's failures are known, it is passed.
     pub fn with_kfs(mut self, kfs: impl IntoIterator<Item = I>) -> Self {
         self.kfs = kfs.into_iter().collect();
         self

@@ -4,7 +4,7 @@ use crate::{
     svc::{SvcCtx, vast::VastFitData},
     ud::UItemId,
     util::RSet,
-    val::{ValItemStatus, ValResult},
+    val::ValResult,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -28,11 +28,10 @@ pub struct ValChargeSizeFail {
 pub struct ValChargeSizeChargeInfo {
     /// Charge item ID.
     pub charge_item_id: ItemId,
-    pub status: ValItemStatus,
     /// Parent module item ID.
     pub parent_item_id: ItemId,
     /// Size attribute value of current charge.
-    pub charge_size: Option<Value>,
+    pub charge_size: Value,
     /// Size value allowed by module.
     pub allowed_size: Value,
 }
@@ -55,12 +54,11 @@ impl VastFitData {
         ctx: &SvcCtx,
     ) -> ValResult<ValChargeSizeFail> {
         let mut charges = Vec::new();
-        for (&charge_uid, &cont_uid) in self.charge_size.iter() {
+        for (&charge_uid, &cont_uid) in self.charge_size.difference(kfs) {
             charges.push(ValChargeSizeChargeInfo {
                 charge_item_id: ctx.u_data.items.ext_id_by_int_id(charge_uid),
-                status: ValItemStatus::from_kfs(kfs, charge_uid),
                 parent_item_id: ctx.u_data.items.ext_id_by_int_id(cont_uid),
-                charge_size: ctx.u_data.items.get(charge_uid).get_r_item_base().unwrap().charge_size,
+                charge_size: get_charge_size(ctx.u_data.items.get(charge_uid).get_r_item_base().unwrap()),
                 allowed_size: ctx
                     .u_data
                     .items
@@ -73,7 +71,7 @@ impl VastFitData {
         }
         match charges.is_empty() {
             true => ValResult::Passed,
-            false => ValResult::from_fail(charges.iter().all(|v| v.status.is_kf()), ValChargeSizeFail { charges }),
+            false => ValResult::Failed(ValChargeSizeFail { charges }),
         }
     }
 }
@@ -97,5 +95,14 @@ impl VastFitData {
 
 // Charge size mismatch happens when parent module requires some charge size
 pub(in crate::svc::vast) fn is_charge_size_mismatch(cont_rib: &RItemBase, charge_rib: &RItemBase) -> bool {
-    cont_rib.charge_size.is_some() && cont_rib.charge_size != charge_rib.charge_size
+    match cont_rib.charge_size {
+        Some(cont_size) => cont_size != get_charge_size(charge_rib),
+        None => false,
+    }
+}
+
+fn get_charge_size(charge_rib: &RItemBase) -> Value {
+    // Some charges have size not specified, their size is implied 0 (e.g. cap charges 25 which fit
+    // into small ancillary shield boosters)
+    charge_rib.charge_size.unwrap_or(Value::ZERO)
 }

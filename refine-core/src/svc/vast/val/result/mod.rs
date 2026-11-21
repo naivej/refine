@@ -1,11 +1,9 @@
-pub use fit::ValResultFit;
-pub use item::ValItemInfo;
-pub use item_status::ValItemStatus;
+pub(crate) use fit_fast::ValResultFitFast;
+pub use fit_verbose::ValResultFit;
 pub use sol::ValResultSol;
 pub use validator::ValResult;
 
-mod fit;
-mod item;
-mod item_status;
+mod fit_fast;
+mod fit_verbose;
 mod sol;
 mod validator;

@@ -16,7 +16,7 @@ pub use mining::{StatMining, StatMiningEntry, StatMiningItemKinds, StatMiningRes
 pub use mobility::{StatAgilityError, StatMaxWarpRangeError, StatWarpSpeedError};
 pub use neut::StatNeutItemKinds;
 pub use orps::{StatOutRepItemKinds, StatOutReps};
-pub use resource::StatResource;
+pub use resource::{StatFighterBayVolume, StatResource};
 pub use sensors::{StatProbingSizeError, StatSensors, StatSensorsKind};
 pub(crate) use shared::{calc_regen, regenerate};
 pub use slot::StatSlot;

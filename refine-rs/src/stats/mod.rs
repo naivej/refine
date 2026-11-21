@@ -33,28 +33,25 @@ pub(crate) use item::ItemStatsOptionsGen;
 pub use item::{ItemStats, ItemStatsCmd, ItemStatsCmdBr, ItemStatsOptions, ItemStatsOptionsBr, ItemStatsResp};
 pub(in crate::stats) use option::StatOptionInt;
 pub use option::{
-    StatItemStateOptions, StatOptionCapBlc, StatOptionCapBlcBr, StatOptionCapSim, StatOptionCapSimBr, StatOptionEhp,
-    StatOptionErps, StatOptionExt, StatOptionFitDmg, StatOptionFitDmgBr, StatOptionFitMining, StatOptionFitOutCps,
-    StatOptionFitOutCpsBr, StatOptionFitOutNps, StatOptionFitOutNpsBr, StatOptionFitOutRps, StatOptionFitOutRpsBr,
-    StatOptionIncomingJam, StatOptionItemDmg, StatOptionItemDmgBr, StatOptionItemMining, StatOptionItemOutCps,
-    StatOptionItemOutCpsBr, StatOptionItemOutNps, StatOptionItemOutNpsBr, StatOptionItemOutRps, StatOptionItemOutRpsBr,
-    StatOptionJump, StatOptionJumpBr, StatOptionMass, StatOptionRps,
+    StatItemStateOptions, StatOptionCapBlc, StatOptionCapBlcBr, StatOptionCapSim, StatOptionCapSimBr,
+    StatOptionDroneBandwidth, StatOptionEhp, StatOptionErps, StatOptionExt, StatOptionFitDmg, StatOptionFitDmgBr,
+    StatOptionFitMining, StatOptionFitOutCps, StatOptionFitOutCpsBr, StatOptionFitOutNps, StatOptionFitOutNpsBr,
+    StatOptionFitOutRps, StatOptionFitOutRpsBr, StatOptionIncomingJam, StatOptionItemDmg, StatOptionItemDmgBr,
+    StatOptionItemMining, StatOptionItemOutCps, StatOptionItemOutCpsBr, StatOptionItemOutNps, StatOptionItemOutNpsBr,
+    StatOptionItemOutRps, StatOptionItemOutRpsBr, StatOptionJump, StatOptionJumpBr, StatOptionMass, StatOptionRps,
 };
 pub(crate) use option::{
     StatOptionCapBlcGen, StatOptionCapSimGen, StatOptionFitDmgGen, StatOptionFitOutCpsGen, StatOptionFitOutNpsGen,
     StatOptionFitOutRpsGen, StatOptionItemDmgGen, StatOptionItemOutCpsGen, StatOptionItemOutNpsGen,
     StatOptionItemOutRpsGen, StatOptionJumpGen,
 };
-pub use rc::{
-    CtlAffectors as StatAffectors,
-    stats::{
-        StatCapBlcSrcKinds, StatCapSim, StatCapSimStagger, StatCritOptions, StatDmgItemKinds, StatEhp, StatEhpLayer,
-        StatErps, StatErpsLayer, StatErpsLayerRegen, StatHp, StatHpLayer, StatInJam, StatItemChargeOptions, StatJump,
-        StatJumpConduit, StatJumpPortal, StatJumpRange, StatJumpSelf, StatMining, StatMiningEntry, StatMiningItemKinds,
-        StatMiningResourceKind, StatNeutItemKinds, StatOutRepItemKinds, StatOutReps, StatResists, StatResistsLayer,
-        StatResource, StatRps, StatRpsLayer, StatRpsLayerRegen, StatSensors, StatSensorsKind, StatSlot, StatTime,
-        StatTimeOptions, StatTimeOptionsBurst, StatTimeOptionsSim,
-    },
+pub use rc::stats::{
+    StatCapBlcSrcKinds, StatCapSim, StatCapSimStagger, StatCritOptions, StatCtlAffectors, StatDmgItemKinds, StatEhp,
+    StatEhpLayer, StatErps, StatErpsLayer, StatErpsLayerRegen, StatFighterBayVolume, StatHp, StatHpLayer, StatInJam,
+    StatItemChargeOptions, StatJump, StatJumpConduit, StatJumpPortal, StatJumpRange, StatJumpSelf, StatMining,
+    StatMiningEntry, StatMiningItemKinds, StatMiningResourceKind, StatNeutItemKinds, StatOutRepItemKinds, StatOutReps,
+    StatResists, StatResistsLayer, StatResource, StatRps, StatRpsLayer, StatRpsLayerRegen, StatSensors,
+    StatSensorsKind, StatSlot, StatTime, StatTimeOptions, StatTimeOptionsBurst, StatTimeOptionsSim,
 };
 pub use result_details::{
     StatBrFallibleError, StatDmg, StatDmgEntry, StatDmgEntryBreacher, StatDmgEntryBreacherRaw, StatResult,

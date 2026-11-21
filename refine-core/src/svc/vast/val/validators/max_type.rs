@@ -1,11 +1,9 @@
-use itertools::Itertools;
-
 use crate::{
     Count, ItemId, ItemTypeId,
     svc::{SvcCtx, vast::VastFitData},
     ud::UItemId,
     util::{RMap, RSet},
-    val::{ValItemStatus, ValResult},
+    val::ValResult,
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -34,20 +32,22 @@ pub struct ValMaxTypeFail {
 pub struct ValMaxTypeTypeInfo {
     /// Type ID of an item this fit has too many.
     pub item_type_id: ItemTypeId,
-    /// How many items of this type is fit.
-    pub item_type_count: Count,
+    /// Items of this type which are fit. All of them count towards the limit, including items which
+    /// have no limit themselves.
+    pub item_type_item_ids: Vec<ItemId>,
     /// Items which break the limit, and what the limit is.
-    #[cfg_attr(feature = "serde", serde_as(as = "serde_with::KeyValueMap<_>"))]
+    #[cfg_attr(feature = "serde", serde_as(as = "refine_serde::VecAsMap"))]
     pub items: Vec<ValMaxTypeItemInfo>,
 }
 
-#[cfg_attr(feature = "serde", derive(serde_tuple::Serialize_tuple))]
+#[cfg_attr(feature = "serde", derive(refine_serde::VecAsMapEntry))]
 #[derive(Copy, Clone)]
 pub struct ValMaxTypeItemInfo {
     /// Item which failed validation.
+    #[cfg_attr(feature = "serde", vec_map(key))]
     pub item_id: ItemId,
-    pub status: ValItemStatus,
     /// Max count of items of the same type ID this item allows to have.
+    #[cfg_attr(feature = "serde", vec_map(value))]
     pub limit: Count,
 }
 
@@ -60,7 +60,10 @@ impl VastFitData {
         for item_type_data in self.mods_svcs_max_type_fitted.values() {
             let fitted = Count::from_usize(item_type_data.len());
             for (&item_uid, &allowed) in item_type_data.iter() {
-                if fitted > allowed && !kfs.contains(&item_uid) {
+                if let Some(allowed) = allowed
+                    && fitted > allowed
+                    && !kfs.contains(&item_uid)
+                {
                     return false;
                 }
             }
@@ -77,30 +80,33 @@ impl VastFitData {
         for (&item_aid, item_type_data) in self.mods_svcs_max_type_fitted.iter() {
             let fitted = Count::from_usize(item_type_data.len());
             for (&item_uid, &allowed) in item_type_data.iter() {
-                if fitted > allowed {
+                if let Some(allowed) = allowed
+                    && fitted > allowed
+                    && !kfs.contains(&item_uid)
+                {
                     item_types
                         .entry(item_aid)
                         .or_insert_with(|| ValMaxTypeTypeInfo {
                             item_type_id: ItemTypeId::from_aid(item_aid),
-                            item_type_count: fitted,
+                            item_type_item_ids: item_type_data
+                                .keys()
+                                .map(|&type_item_uid| ctx.u_data.items.ext_id_by_int_id(type_item_uid))
+                                .collect(),
                             items: Vec::new(),
                         })
                         .items
                         .push(ValMaxTypeItemInfo {
                             item_id: ctx.u_data.items.ext_id_by_int_id(item_uid),
-                            status: ValItemStatus::from_kfs(kfs, item_uid),
                             limit: allowed,
                         });
                 }
             }
         }
-        let item_types = item_types.into_values().collect_vec();
         match item_types.is_empty() {
             true => ValResult::Passed,
-            false => ValResult::from_fail(
-                item_types.iter().flat_map(|v| v.items.iter()).all(|v| v.status.is_kf()),
-                ValMaxTypeFail { item_types },
-            ),
+            false => ValResult::Failed(ValMaxTypeFail {
+                item_types: item_types.into_values().collect(),
+            }),
         }
     }
 }

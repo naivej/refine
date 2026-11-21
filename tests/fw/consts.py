@@ -707,20 +707,6 @@ class ApiModOp(StrEnum):
 
 
 @unique
-class ApiModAddMode(StrEnum):
-    append = 'append'
-    equip = 'equip'
-    insert = 'insert'
-    replace = 'replace'
-
-
-@unique
-class ApiModMvMode(StrEnum):
-    shift = 'shift'
-    swap = 'swap'
-
-
-@unique
 class ApiModRmMode(StrEnum):
     remove = 'remove'
     free = 'free'
@@ -785,26 +771,7 @@ class ApiValShipType(StrEnum):
 
 
 @unique
-class ApiValStatus(StrEnum):
-    passed = 'passed'
-    passed_kfs = 'passed_kfs'
-    failed = 'failed'
-
-
-@unique
-class ApiValItemStatus(StrEnum):
-    failed = 'failed'
-    kf = 'kf'
-
-
-@unique
-class ApiCapSimResult(StrEnum):
-    stable = 'stable'
-    time = 'time'
-
-
-@unique
-class ApiCtlAffector(StrEnum):
+class ApiCtlAffectors(StrEnum):
     unmodified = 'unmodified'
     deactivate = 'deactivate'
     offline = 'offline'

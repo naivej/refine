@@ -3,8 +3,8 @@
 /// - store and access validation-specific options in internal validation options
 /// - variant names are used to deserialize options
 ///
-/// Because of deserialization part it affects public API despite being non-public; be careful when
-/// changing.
+/// Because of the deserialization part it affects public API despite being non-public; be careful
+/// when changing.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize), serde(rename_all = "snake_case"))]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub(in crate::svc::vast::val) enum ValKind {
@@ -51,12 +51,14 @@ pub(in crate::svc::vast::val) enum ValKind {
     // Drones
     DroneBayVolume,
     LaunchedDroneCount,
-    DroneBandwidth,
+    DroneBandwidthCurrent,
+    DroneBandwidthPotential,
     UnlaunchableDroneSlot,
     UnlaunchableDroneBandwidth,
     DroneGroup,
     // Fighters
-    FighterBayVolume,
+    FighterBayVolumeAll,
+    FighterBayVolumeInbay,
     LaunchedFighterCount,
     LaunchedLightFighterCount,
     LaunchedHeavyFighterCount,

@@ -664,7 +664,6 @@ mod pyfa_order_tests {
         super::info::{AttrValInfo, ModAccumInfo},
         *,
     };
-    use crate::rd::REffectId;
 
     #[test]
     fn pyfa_fitting_groups_compatible_multipliers_and_keeps_info_and_default_order() {
@@ -689,7 +688,6 @@ mod pyfa_order_tests {
                         true,
                     );
                     info.add_val(
-                        REffectId::default(),
                         op,
                         val,
                         None,
@@ -697,7 +695,7 @@ mod pyfa_order_tests {
                         false,
                         AItemCatId::from_i32(7),
                         AggrMode::Stack,
-                        smallvec::smallvec![],
+                        Vec::new(),
                     );
                 };
                 add(first, 0.1);
@@ -736,7 +734,6 @@ mod pyfa_order_tests {
                 true,
             );
             info.add_val(
-                REffectId::default(),
                 op,
                 value,
                 None,
@@ -744,7 +741,7 @@ mod pyfa_order_tests {
                 false,
                 AItemCatId::from_i32(7),
                 AggrMode::Stack,
-                smallvec::smallvec![],
+                Vec::new(),
             );
         }
         let result = fast.apply_dogma_mods(Value::from_f64_unchecked(35.0), true, true);

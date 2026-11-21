@@ -1,7 +1,7 @@
 use crate::{
     AutochargeInfo, BoosterInfo, CharacterInfo, ChargeInfo, DroneInfo, FighterInfo, FwEffectInfo, ImplantInfo, ItemId,
-    ItemInfoMode, ModuleInfo, ProjEffectInfo, RigInfo, ServiceInfo, ShipInfo, SkillInfo, StanceInfo, SubsystemInfo,
-    SwEffectInfo, shared::OvrdMapLight,
+    ItemInfoMode, ItemTypeId, ModuleInfo, ProjEffectInfo, RigInfo, ServiceInfo, ShipInfo, SkillInfo, StanceInfo,
+    SubsystemInfo, SwEffectInfo, shared::OvrdMapLight,
 };
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize), serde(untagged))]
@@ -24,6 +24,29 @@ pub enum ItemInfo {
     Stance(StanceInfo),
     Subsystem(SubsystemInfo),
     SwEffect(SwEffectInfo),
+}
+impl ItemInfo {
+    pub fn get_type_id(&self) -> Option<ItemTypeId> {
+        match self {
+            Self::Autocharge(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Booster(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Character(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Charge(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Drone(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Fighter(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::FwEffect(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Implant(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Module(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::ProjEffect(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Rig(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Service(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Ship(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Skill(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Stance(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::Subsystem(inner) => inner.extended.as_ref().map(|v| v.type_id),
+            Self::SwEffect(inner) => inner.extended.as_ref().map(|v| v.type_id),
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

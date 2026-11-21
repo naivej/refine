@@ -44,15 +44,12 @@ impl Vast {
                     let module_rib = module.get_r_item_base().unwrap();
                     let module_rifd = module.get_r_item_flex_data().unwrap();
                     fit_data.mods_svcs_online.insert(item_uid);
-                    if let Some(item_grp_aid) = module_rib.val_online_group_id {
-                        fit_data
-                            .mods_svcs_max_group_online_all
-                            .add_entry(item_grp_aid, item_uid);
-                        if module_rifd.max_group_online_limited {
-                            fit_data
-                                .mods_svcs_max_group_online_limited
-                                .insert(item_uid, item_grp_aid);
-                        }
+                    if module_rib.val_online_group_tracked {
+                        fit_data.mods_svcs_max_group_online.add_entry(
+                            module_rib.grp_id,
+                            item_uid,
+                            module_rifd.max_group_online_limited,
+                        );
                     }
                     if let Some(sec_class) = module_rib.online_max_sec_class {
                         fit_data.sec_zone_online_class.insert(item_uid, sec_class);
@@ -75,15 +72,12 @@ impl Vast {
                     let service_rib = service.get_r_item_base().unwrap();
                     let service_rifd = service.get_r_item_flex_data().unwrap();
                     fit_data.mods_svcs_online.insert(item_uid);
-                    if let Some(item_grp_aid) = service_rib.val_online_group_id {
-                        fit_data
-                            .mods_svcs_max_group_online_all
-                            .add_entry(item_grp_aid, item_uid);
-                        if service_rifd.max_group_online_limited {
-                            fit_data
-                                .mods_svcs_max_group_online_limited
-                                .insert(item_uid, item_grp_aid);
-                        }
+                    if service_rib.val_online_group_tracked {
+                        fit_data.mods_svcs_max_group_online.add_entry(
+                            service_rib.grp_id,
+                            item_uid,
+                            service_rifd.max_group_online_limited,
+                        );
                     }
                     if let Some(sec_class) = service_rib.online_max_sec_class {
                         fit_data.sec_zone_online_class.insert(item_uid, sec_class);
@@ -106,11 +100,12 @@ impl Vast {
                     let fit_data = self.get_fit_data_mut(module.get_fit_uid());
                     let module_rib = module.get_r_item_base().unwrap();
                     let module_rifd = module.get_r_item_flex_data().unwrap();
-                    if let Some(item_grp_aid) = module_rib.val_active_group_id {
-                        fit_data.mods_max_group_active_all.add_entry(item_grp_aid, item_uid);
-                        if module_rifd.max_group_active_limited {
-                            fit_data.mods_max_group_active_limited.insert(item_uid, item_grp_aid);
-                        }
+                    if module_rib.val_active_group_tracked {
+                        fit_data.mods_max_group_active.add_entry(
+                            module_rib.grp_id,
+                            item_uid,
+                            module_rifd.max_group_active_limited,
+                        );
                     }
                     match module_rib.max_state {
                         RState::Offline => {
@@ -205,15 +200,11 @@ impl Vast {
                 UItem::Module(module) => {
                     let fit_data = self.get_fit_data_mut(module.get_fit_uid());
                     let module_rib = module.get_r_item_base().unwrap();
-                    let module_rifd = module.get_r_item_flex_data().unwrap();
                     fit_data.mods_svcs_online.remove(&item_uid);
-                    if let Some(item_grp_aid) = module_rib.val_online_group_id {
+                    if module_rib.val_online_group_tracked {
                         fit_data
-                            .mods_svcs_max_group_online_all
-                            .remove_entry(item_grp_aid, &item_uid);
-                        if module_rifd.max_group_online_limited {
-                            fit_data.mods_svcs_max_group_online_limited.remove(&item_uid);
-                        }
+                            .mods_svcs_max_group_online
+                            .remove_l2(module_rib.grp_id, &item_uid);
                     }
                     if module_rib.online_max_sec_class.is_some() {
                         fit_data.sec_zone_online_class.remove(&item_uid);
@@ -228,15 +219,11 @@ impl Vast {
                 UItem::Service(service) => {
                     let fit_data = self.get_fit_data_mut(service.get_fit_uid());
                     let service_rib = service.get_r_item_base().unwrap();
-                    let service_rifd = service.get_r_item_flex_data().unwrap();
                     fit_data.mods_svcs_online.remove(&item_uid);
-                    if let Some(item_grp_aid) = service_rib.val_online_group_id {
+                    if service_rib.val_online_group_tracked {
                         fit_data
-                            .mods_svcs_max_group_online_all
-                            .remove_entry(item_grp_aid, &item_uid);
-                        if service_rifd.max_group_online_limited {
-                            fit_data.mods_svcs_max_group_online_limited.remove(&item_uid);
-                        }
+                            .mods_svcs_max_group_online
+                            .remove_l2(service_rib.grp_id, &item_uid);
                     }
                     if service_rib.online_max_sec_class.is_some() {
                         fit_data.sec_zone_online_class.remove(&item_uid);
@@ -255,12 +242,8 @@ impl Vast {
                 UItem::Module(module) => {
                     let fit_data = self.get_fit_data_mut(module.get_fit_uid());
                     let module_rib = module.get_r_item_base().unwrap();
-                    let module_rifd = module.get_r_item_flex_data().unwrap();
-                    if let Some(item_grp_aid) = module_rib.val_active_group_id {
-                        fit_data.mods_max_group_active_all.remove_entry(item_grp_aid, &item_uid);
-                        if module_rifd.max_group_active_limited {
-                            fit_data.mods_max_group_active_limited.remove(&item_uid);
-                        }
+                    if module_rib.val_active_group_tracked {
+                        fit_data.mods_max_group_active.remove_l2(module_rib.grp_id, &item_uid);
                     }
                     match module_rib.max_state {
                         RState::Offline => {

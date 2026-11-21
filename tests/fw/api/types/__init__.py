@@ -1,3 +1,4 @@
+from .item import ModAddMode, ModMoveMode
 from .refine import RefineInfo
 from .sol import Sol
 from .src import Src
@@ -7,6 +8,7 @@ from .stats import (
     ItemStatsOptions,
     StatCapNosfsOptions,
     StatCapRegenOptions,
+    StatCapSim,
     StatCapSrcKinds,
     StatDmgItemKinds,
     StatMiningItemKinds,
@@ -14,6 +16,7 @@ from .stats import (
     StatOutRepItemKinds,
     StatsOptionCapBalance,
     StatsOptionCapSim,
+    StatsOptionDroneBandwidth,
     StatsOptionEhp,
     StatsOptionErps,
     StatsOptionFitDmg,
@@ -30,7 +33,6 @@ from .stats import (
     StatsOptionJump,
     StatsOptionMass,
     StatsOptionRps,
-    StatTimeBurst,
-    StatTimeSim,
+    StatTime,
 )
 from .validation import ValOptions

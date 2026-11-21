@@ -1,12 +1,12 @@
 //! Stats-related exports
 pub use crate::{
-    api::{FitStats, FleetStats, ItemStats, ItemStatsCommon, SolStats, SwitchedItemStats},
+    api::{FitStats, FleetStats, ItemStats, ItemStatsCommon, SolStats, StatCtlAffectors, SwitchedItemStats},
     svc::vast::{
         StatCapBlcNosfs, StatCapBlcRegen, StatCapBlcSrcKinds, StatCapSim, StatCapSimPyfa, StatCapSimPyfaError,
         StatCapSimStagger, StatCapSimTraceRequest, StatCritOptions, StatDmg, StatDmgApplied, StatDmgEntry,
         StatDmgEntryApplied, StatDmgEntryBreacher, StatDmgItemKinds, StatEhp, StatEhpLayer, StatErps, StatErpsLayer,
-        StatErpsLayerRegen, StatHp, StatHpLayer, StatInJam, StatItemChargeOptions, StatJump, StatJumpConduit,
-        StatJumpPassenger, StatJumpPortal, StatJumpRange, StatJumpSelf, StatMining, StatMiningEntry,
+        StatErpsLayerRegen, StatFighterBayVolume, StatHp, StatHpLayer, StatInJam, StatItemChargeOptions, StatJump,
+        StatJumpConduit, StatJumpPassenger, StatJumpPortal, StatJumpRange, StatJumpSelf, StatMining, StatMiningEntry,
         StatMiningItemKinds, StatMiningResourceKind, StatNeutItemKinds, StatOutRepItemKinds, StatOutReps, StatResists,
         StatResistsLayer, StatResource, StatRps, StatRpsLayer, StatRpsLayerRegen, StatSensors, StatSensorsKind,
         StatSlot, StatTime, StatTimeOptions, StatTimeOptionsBurst, StatTimeOptionsSim,

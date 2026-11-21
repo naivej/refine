@@ -4,8 +4,8 @@ pub use stats::{
     StatAgilityError, StatCapBlcNosfs, StatCapBlcRegen, StatCapBlcSrcKinds, StatCapSim, StatCapSimPyfa,
     StatCapSimPyfaError, StatCapSimStagger, StatCapSimTraceRequest, StatCritOptions, StatDmg, StatDmgApplied,
     StatDmgEntry, StatDmgEntryApplied, StatDmgEntryBreacher, StatDmgItemKinds, StatEhp, StatEhpLayer, StatErps,
-    StatErpsLayer, StatErpsLayerRegen, StatHp, StatHpLayer, StatInJam, StatItemChargeOptions, StatJump,
-    StatJumpConduit, StatJumpError, StatJumpPassenger, StatJumpPortal, StatJumpRange, StatJumpSelf,
+    StatErpsLayer, StatErpsLayerRegen, StatFighterBayVolume, StatHp, StatHpLayer, StatInJam, StatItemChargeOptions,
+    StatJump, StatJumpConduit, StatJumpError, StatJumpPassenger, StatJumpPortal, StatJumpRange, StatJumpSelf,
     StatMaxWarpRangeError, StatMining, StatMiningEntry, StatMiningItemKinds, StatMiningResourceKind, StatNeutItemKinds,
     StatOutRepItemKinds, StatOutReps, StatProbingSizeError, StatResists, StatResistsLayer, StatResource, StatRps,
     StatRpsLayer, StatRpsLayerRegen, StatSensors, StatSensorsKind, StatSlot, StatTime, StatTimeError, StatTimeOptions,
@@ -17,17 +17,17 @@ pub use val::{
     ValChargeSizeChargeInfo, ValChargeSizeFail, ValChargeVolumeChargeInfo, ValChargeVolumeFail, ValCloakingBlockedFail,
     ValDroneGroupFail, ValDroneGroupInfo, ValEffectSecZoneEffectInfo, ValEffectSecZoneFail, ValEffectSecZoneItemInfo,
     ValEffectStopperFail, ValEffectStopperItemInfo, ValEnabled, ValFighterSquadSizeFail,
-    ValFighterSquadSizeFighterInfo, ValItemInfo, ValItemKindFail, ValItemKindItemInfo, ValItemSecZoneFail,
-    ValItemSecZoneItemInfo, ValItemStatus, ValItemVsShipKindFail, ValItemVsShipKindItemInfo, ValMaxGroupFail,
-    ValMaxGroupGroupInfo, ValMaxGroupItemInfo, ValMaxTypeFail, ValMaxTypeItemInfo, ValMaxTypeTypeInfo,
-    ValModuleStateFail, ValModuleStateModuleInfo, ValNotLoadedItemFail, ValOptions, ValOptionsSol,
-    ValOverloadSkillFail, ValOverloadSkillItemInfo, ValProjFilterFail, ValProjFilterItemInfo, ValProjImmunityFail,
-    ValProjImmunityItemInfo, ValResourceFail, ValResourceItemInfo, ValResult, ValResultFit, ValResultSol,
-    ValRigSizeFail, ValRigSizeItemInfo, ValShipKind, ValShipLimitFail, ValShipLimitItemInfo, ValShipStanceFail,
-    ValSlotCountFail, ValSlotIndexFail, ValSlotIndexSlotInfo, ValSrqFail, ValSrqItemInfo, ValSrqSkillInfo,
-    ValUnusableCapFail, ValUnusableCapItemInfo, ValUnusableResFail, ValUnusableResItemInfo, ValUnusableSlotFail,
+    ValFighterSquadSizeFighterInfo, ValItemKindFail, ValItemKindItemInfo, ValItemSecZoneFail, ValItemSecZoneItemInfo,
+    ValItemVsShipKindFail, ValItemVsShipKindItemInfo, ValMaxGroupFail, ValMaxGroupGroupInfo, ValMaxGroupItemInfo,
+    ValMaxTypeFail, ValMaxTypeItemInfo, ValMaxTypeTypeInfo, ValModuleStateFail, ValModuleStateModuleInfo,
+    ValNotLoadedItemFail, ValOptions, ValOptionsSol, ValOverloadSkillFail, ValOverloadSkillItemInfo, ValProjFilterFail,
+    ValProjFilterItemInfo, ValProjImmunityFail, ValProjImmunityItemInfo, ValResourceFail, ValResourceItemInfo,
+    ValResult, ValResultFit, ValResultSol, ValRigSizeFail, ValRigSizeItemInfo, ValShipKind, ValShipLimitFail,
+    ValShipLimitItemInfo, ValShipStanceFail, ValSlotCountFail, ValSlotIndexFail, ValSlotIndexSlotInfo, ValSrqFail,
+    ValSrqItemInfo, ValSrqSkillInfo, ValUnusableCapFail, ValUnusableCapItemInfo, ValUnusableResFail,
+    ValUnusableResItemInfo, ValUnusableSlotFail,
 };
-pub(crate) use val::{ValOptionsInt, ValOptionsSolInt};
+pub(crate) use val::{ValOptionsInt, ValOptionsSolInt, ValResultFitFast};
 pub(in crate::svc) use vast::Vast;
 use vast::VastFitData;
 

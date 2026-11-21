@@ -3,9 +3,9 @@ use crate::{
     err::BrResolveError,
     stats::{
         FitStats, StatBrFallibleError, StatCapSim, StatDmg, StatEhp, StatErps, StatInJam, StatJump, StatMining,
-        StatOptionCapBlc, StatOptionCapSim, StatOptionEhp, StatOptionErps, StatOptionFitDmg, StatOptionFitMining,
-        StatOptionFitOutCps, StatOptionFitOutNps, StatOptionFitOutRps, StatOptionIncomingJam, StatOptionJump,
-        StatOptionMass, StatOptionRps, StatOutReps, StatResult, StatRps,
+        StatOptionCapBlc, StatOptionCapSim, StatOptionDroneBandwidth, StatOptionEhp, StatOptionErps, StatOptionFitDmg,
+        StatOptionFitMining, StatOptionFitOutCps, StatOptionFitOutNps, StatOptionFitOutRps, StatOptionIncomingJam,
+        StatOptionJump, StatOptionMass, StatOptionRps, StatOutReps, StatResource, StatResult, StatRps,
         err::{StatFitAppliedError, StatFitShipAppliedError, StatFitShipError, StatJumpError},
         exec_shared::{collect_stats_err_both_br, collect_stats_err_inner, collect_stats_err_outer_br},
         fit::FitStatsOptionsResolved,
@@ -110,8 +110,8 @@ impl FitStatsOptionsResolved {
         if *drone_bay_volume {
             stats.drone_bay_volume = StatResult::from_stat(core_fit_stats.get_stat_drone_bay_volume());
         }
-        if *drone_bandwidth {
-            stats.drone_bandwidth = StatResult::from_stat(core_fit_stats.get_stat_drone_bandwidth());
+        if let Some(options) = drone_bandwidth {
+            stats.drone_bandwidth = get_drone_bandwidth_stats(core_fit_stats, options);
         }
         if *fighter_bay_volume {
             stats.fighter_bay_volume = StatResult::from_stat(core_fit_stats.get_stat_fighter_bay_volume());
@@ -339,6 +339,18 @@ fn get_outgoing_cps_stats(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// Fit resources
+////////////////////////////////////////////////////////////////////////////////////////////////////
+fn get_drone_bandwidth_stats(
+    core_fit_stats: &mut rc::stats::FitStats,
+    options: &[StatOptionDroneBandwidth],
+) -> StatResult<StatResource, !, !> {
+    collect_stats_err_inner(options, |option| {
+        Ok(core_fit_stats.get_stat_drone_bandwidth(option.decreasers))
+    })
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // Ship tank
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 fn get_ehp_stats(
@@ -406,13 +418,17 @@ fn get_mass_stats(
     core_fit_stats: &mut rc::stats::FitStats,
     options: &[StatOptionMass],
 ) -> StatResult<PValue, StatFitShipError<!>, !> {
-    collect_stats_err_inner(options, |option| core_fit_stats.get_stat_mass(option.affectors))
+    collect_stats_err_inner(options, |option| core_fit_stats.get_stat_mass(option.increasers))
 }
 fn get_jump_stats(
     core_fit_stats: &mut rc::stats::FitStats,
     options: &[StatOptionJump],
 ) -> StatResult<StatJump, StatFitShipError<StatJumpError>, !> {
     collect_stats_err_inner(options, |option| {
-        core_fit_stats.get_stat_jump(option.range, &option.passenger_fit_ids, option.passenger_fuel_affectors)
+        core_fit_stats.get_stat_jump(
+            option.range,
+            &option.passenger_fit_ids,
+            option.passenger_mass_increasers,
+        )
     })
 }

@@ -15,12 +15,11 @@ def test_fail_single(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
 
 
 def test_fail_multiple_ship(client, consts):
@@ -38,14 +37,11 @@ def test_fail_multiple_ship(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.failed, 50),
-        api_drone2.id: (consts.ApiValItemStatus.failed, 100)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone1.id: 50, api_drone2.id: 100}
 
 
 def test_fail_multiple_struct(client, consts):
@@ -63,14 +59,11 @@ def test_fail_multiple_struct(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.failed, 50),
-        api_drone2.id: (consts.ApiValItemStatus.failed, 100)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone1.id: 50, api_drone2.id: 100}
 
 
 def test_equal(client, consts):
@@ -86,9 +79,10 @@ def test_equal(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(150))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_known_failures(client, consts):
@@ -110,91 +104,63 @@ def test_known_failures(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id]))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id]))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed_kfs
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone1.id: (consts.ApiValItemStatus.kf, 150)}
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone2 = api_fit.add_drone(type_id=eve_drone2_id, state=consts.ApiMinionState.in_space)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(250), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id]))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id]))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(250)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.failed, 100)}
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone2.id]))
+    assert api_val.details.drone_bandwidth_current.used == approx(250)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone2.id: 100}
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone2.id]))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(250)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.failed, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100)}
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id, api_drone2.id]))
+    assert api_val.details.drone_bandwidth_current.used == approx(250)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone1.id: 150}
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id, api_drone2.id]))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed_kfs
-    assert api_val.details.drone_bandwidth.fail.used == approx(250)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100)}
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id, api_other.id, api_drone2.id]))
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id, api_other.id, api_drone2.id]))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed_kfs
-    assert api_val.details.drone_bandwidth.fail.used == approx(250)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100)}
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone3 = api_fit.add_drone(type_id=eve_drone3_id, state=consts.ApiMinionState.in_space)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(240), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id, api_drone2.id]))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id, api_drone2.id]))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed_kfs
-    assert api_val.details.drone_bandwidth.fail.used == approx(240)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100)}
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone3.remove()
     api_drone4 = api_fit.add_drone(type_id=eve_drone4_id, state=consts.ApiMinionState.in_space)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(250), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id, api_drone2.id]))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id, api_drone2.id]))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed_kfs
-    assert api_val.details.drone_bandwidth.fail.used == approx(250)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100)}
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone4.remove()
     api_drone5 = api_fit.add_drone(type_id=eve_drone5_id, state=consts.ApiMinionState.in_space)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(250.5), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=[api_drone1.id, api_drone2.id]))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=[api_drone1.id, api_drone2.id]))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == 250.5
-    assert api_val.details.drone_bandwidth.fail.max == 125
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.kf, 150),
-        api_drone2.id: (consts.ApiValItemStatus.kf, 100),
-        api_drone5.id: (consts.ApiValItemStatus.failed, 0.5)}
+    assert api_val.details.drone_bandwidth_current.used == 250.5
+    assert api_val.details.drone_bandwidth_current.max == 125
+    assert api_val.details.drone_bandwidth_current.users == {api_drone5.id: 0.5}
 
 
 def test_modified_use(client, consts):
@@ -225,24 +191,22 @@ def test_modified_use(client, consts):
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(75)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
     # Action
     api_implant.remove()
     # Verification
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(150)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
 
 
 def test_modified_max(client, consts):
@@ -268,21 +232,21 @@ def test_modified_max(client, consts):
     assert api_ship.update().attrs[eve_max_attr_id].modified == approx(120)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(120))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(120)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(120)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
     # Action
     api_fit.add_implant(type_id=eve_implant_id)
     # Verification
     assert api_ship.update().attrs[eve_max_attr_id].modified == approx(180)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(180))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_mutation_use(client, consts):
@@ -303,36 +267,33 @@ def test_mutation_use(client, consts):
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(130)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(130), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(130)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, approx(130))}
+    assert api_val.details.drone_bandwidth_current.used == approx(130)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: approx(130)}
     # Action
     api_drone.change_drone(mutation=(eve_mutator_id, {eve_use_attr_id: Muta.roll_to_api(val=0.8)}))
     # Verification
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(145.6)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(130), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(130)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, approx(130))}
+    assert api_val.details.drone_bandwidth_current.used == approx(130)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: approx(130)}
     # Action
     api_drone.change_drone(mutation={eve_use_attr_id: None})
     # Verification
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(130)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(130), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(130)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, approx(130))}
+    assert api_val.details.drone_bandwidth_current.used == approx(130)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: approx(130)}
 
 
 def test_mutation_use_base_change(client, consts):
@@ -359,12 +320,11 @@ def test_mutation_use_base_change(client, consts):
     assert api_drone.update().attrs[eve_use_attr_id].modified == approx(145.6)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(130), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(130)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, approx(130))}
+    assert api_val.details.drone_bandwidth_current.used == approx(130)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: approx(130)}
     # Action
     api_drone.change_drone(type_id=eve_base_drone2_id)
     # Verification
@@ -373,9 +333,10 @@ def test_mutation_use_base_change(client, consts):
     assert api_drone.attrs[eve_use_attr_id].modified == approx(112)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(100), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone.change_drone(type_id=eve_base_drone1_id)
     # Verification
@@ -384,12 +345,11 @@ def test_mutation_use_base_change(client, consts):
     assert api_drone.attrs[eve_use_attr_id].modified == approx(145.6)
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(130), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(130)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, approx(130))}
+    assert api_val.details.drone_bandwidth_current.used == approx(130)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: approx(130)}
 
 
 def test_switch_type_id(client, consts):
@@ -408,61 +368,59 @@ def test_switch_type_id(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
     # Action
     api_drone.change_drone(type_id=eve_drone2_id)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(140), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(140)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 140)}
+    assert api_val.details.drone_bandwidth_current.used == approx(140)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 140}
     # Action
     api_drone.change_drone(type_id=eve_drone3_id)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(120), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone.change_drone(type_id=eve_drone1_id)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
     # Action
     api_drone.change_drone(type_id=eve_drone4_id)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(0), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone.change_drone(type_id=eve_drone2_id)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(140), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(140)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 140)}
+    assert api_val.details.drone_bandwidth_current.used == approx(140)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 140}
 
 
 def test_rounding(client, consts):
@@ -481,14 +439,11 @@ def test_rounding(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(5.229), approx(5.223))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(5.229)
-    assert api_val.details.drone_bandwidth.fail.max == approx(5.223)
-    assert api_val.details.drone_bandwidth.fail.users == {
-        api_drone1.id: (consts.ApiValItemStatus.failed, 0.002),
-        api_drone2.id: (consts.ApiValItemStatus.failed, 5.227)}
+    assert api_val.details.drone_bandwidth_current.used == approx(5.229)
+    assert api_val.details.drone_bandwidth_current.max == approx(5.223)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone1.id: 0.002, api_drone2.id: 5.227}
 
 
 def test_no_ship(client, consts):
@@ -502,12 +457,11 @@ def test_no_ship(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(5), None)
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(5)
-    assert api_val.details.drone_bandwidth.fail.max is None
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 5)}
+    assert api_val.details.drone_bandwidth_current.used == approx(5)
+    assert api_val.details.drone_bandwidth_current.max is None
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 5}
 
 
 def test_no_attr_use(client, consts):
@@ -521,9 +475,10 @@ def test_no_attr_use(client, consts):
     api_fit.set_ship(type_id=eve_ship_id)
     api_fit.add_drone(type_id=eve_drone_id, state=consts.ApiMinionState.in_space)
     # Verification - users are assumed to take no resource when attribute does not exist
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_no_attr_max(client, consts):
@@ -537,12 +492,11 @@ def test_no_attr_max(client, consts):
     api_fit.set_ship(type_id=eve_ship_id)
     api_drone = api_fit.add_drone(type_id=eve_drone_id, state=consts.ApiMinionState.in_space)
     # Verification - when output attr does not exist, it is assumed to be 0
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(50)
-    assert api_val.details.drone_bandwidth.fail.max == approx(0)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 50)}
+    assert api_val.details.drone_bandwidth_current.used == approx(50)
+    assert api_val.details.drone_bandwidth_current.max == approx(0)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 50}
 
 
 def test_not_loaded_ship(client, consts):
@@ -558,12 +512,11 @@ def test_not_loaded_ship(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(5), None)
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(5)
-    assert api_val.details.drone_bandwidth.fail.max is None
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 5)}
+    assert api_val.details.drone_bandwidth_current.used == approx(5)
+    assert api_val.details.drone_bandwidth_current.max is None
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 5}
 
 
 def test_not_loaded_user(client, consts):
@@ -580,9 +533,10 @@ def test_not_loaded_user(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(0), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_non_positive(client, consts):
@@ -602,12 +556,11 @@ def test_non_positive(client, consts):
     # Verification - items with negative and 0 use are not exposed
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(140), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(140)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone2.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(140)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone2.id: 150}
 
 
 def test_no_value_use(client, consts):
@@ -625,12 +578,11 @@ def test_no_value_use(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone1.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone1.id: 150}
 
 
 def test_no_value_max(client, consts):
@@ -646,12 +598,11 @@ def test_no_value_max(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(0))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(0)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(0)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
 
 
 def test_criterion_drone_state(client, consts):
@@ -667,28 +618,29 @@ def test_criterion_drone_state(client, consts):
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(0), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
     # Action
     api_drone.change_drone(state=consts.ApiMinionState.in_space)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(150), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is False
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.failed
-    assert api_val.details.drone_bandwidth.fail.used == approx(150)
-    assert api_val.details.drone_bandwidth.fail.max == approx(125)
-    assert api_val.details.drone_bandwidth.fail.users == {api_drone.id: (consts.ApiValItemStatus.failed, 150)}
+    assert api_val.details.drone_bandwidth_current.used == approx(150)
+    assert api_val.details.drone_bandwidth_current.max == approx(125)
+    assert api_val.details.drone_bandwidth_current.users == {api_drone.id: 150}
     # Action
     api_drone.change_drone(state=consts.ApiMinionState.in_bay)
     # Verification
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(0), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_criterion_item_kind(client, consts):
@@ -722,9 +674,10 @@ def test_criterion_item_kind(client, consts):
     assert len(api_fighter.autocharges) == 1
     api_stats = api_fit.get_stats(options=FitStatsOptions(drone_bandwidth=True))
     assert api_stats.drone_bandwidth.one() == (approx(0), approx(125))
-    api_val = api_fit.validate(options=ValOptions(drone_bandwidth=True))
+    api_val = api_fit.validate(options=ValOptions(drone_bandwidth_current=True))
     assert api_val.passed is True
-    assert api_val.details.drone_bandwidth.status == consts.ApiValStatus.passed
+    with check_no_field():
+        api_val.details  # ruff:ignore[useless-expression]
 
 
 def test_stat_not_requested(client, consts):
