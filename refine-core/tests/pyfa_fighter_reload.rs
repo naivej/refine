@@ -1,8 +1,9 @@
 use std::{collections::BTreeSet, env, fs};
 
 use refine_core::{
-    AbilityId, AddMode, AttrId, CountNz, DogmaEffectId, EffectId, EffectMode, EveAttrId, Fit, ItemCommon, ItemTypeId,
-    MinionState, ModRack, ModuleState, RearmMinion, SkillLevel, SolOwned, Src,
+    AbilityId, AddMode, AttrId, Coordinates, CountNz, Direction, DogmaEffectId, EffectId, EffectMode, EveAttrId, Fit,
+    ItemCommon, ItemTypeId, MinionState, ModRack, ModuleState, Movement, PValue, RearmMinion, SkillLevel, SolOwned,
+    Src, Value,
     ed::{
         EAbil, EAbilId, EAttr, EAttrId, EData, EEffect, EEffectCatId, EEffectId, EEffectMod, EEffectModArg, EFloat,
         EInt, EItem, EItemAbil, EItemAttr, EItemCatId, EItemEffect, EItemGroup, EItemGrpId, EItemId, EPrimitive,
@@ -15,6 +16,7 @@ use refine_core::{
 };
 
 const THANATOS: i32 = 23911;
+const KESTREL: i32 = 602;
 const FIRBOLG: i32 = 23059;
 const AMPLIFIER: i32 = 4405;
 const GALLENTE_CARRIER: i32 = 24313;
@@ -32,12 +34,12 @@ struct FirbolgData {
 
 impl EveDataHandlerCore for FirbolgData {
     fn get_data_version(&self) -> Result<String, EveDataHandlerError> {
-        Ok("Pyfa v2.70.0 Firbolg paper damage inputs".into())
+        Ok("Pyfa v2.70.0 Firbolg damage inputs".into())
     }
 
     fn get_data(&self) -> Result<EData, EveDataHandlerError> {
         let mut data = EData::new();
-        for (group, category) in [(547, 6), (1652, 87), (645, 7), (257, 16), (273, 16)] {
+        for (group, category) in [(547, 6), (25, 6), (1652, 87), (645, 7), (257, 16), (273, 16)] {
             data.groups.data.push(EItemGroup {
                 id: EItemGrpId::from_i32(group),
                 category_id: EItemCatId::from_i32(category),
@@ -45,6 +47,7 @@ impl EveDataHandlerCore for FirbolgData {
         }
         for (item, group) in [
             (THANATOS, 547),
+            (KESTREL, 25),
             (FIRBOLG, 1652),
             (AMPLIFIER, 645),
             (GALLENTE_CARRIER, 257),
@@ -62,7 +65,8 @@ impl EveDataHandlerCore for FirbolgData {
             });
         }
         for attr in [
-            12, 182, 277, 280, 292, 1255, 2130, 2132, 2157, 2182, 2212, 2215, 2226, 2228, 2233, 2367, 2426,
+            12, 37, 182, 277, 280, 292, 552, 1255, 2125, 2126, 2127, 2128, 2130, 2132, 2149, 2157, 2182, 2212, 2215,
+            2226, 2228, 2231, 2232, 2233, 2234, 2235, 2236, 2237, 2367, 2426,
         ] {
             data.attrs.data.push(EAttr {
                 id: EAttrId::from_i32(attr),
@@ -76,17 +80,30 @@ impl EveDataHandlerCore for FirbolgData {
         for (item, attr, value) in [
             (THANATOS, 12, 6.0),
             (THANATOS, 2367, 5.0),
+            (KESTREL, 37, 325.0),
+            (KESTREL, 552, 38.0),
             (FIRBOLG, 182, f64::from(FIGHTERS)),
             (FIRBOLG, 277, 1.0),
+            (FIRBOLG, 2125, 400.0),
+            (FIRBOLG, 2126, 70.0),
+            (FIRBOLG, 2127, 5.0),
+            (FIRBOLG, 2128, 5.5),
             (FIRBOLG, 2130, 1.0),
             (FIRBOLG, 2132, 207.0),
+            (FIRBOLG, 2149, 10000.0),
             (FIRBOLG, 2157, 20000.0),
             (FIRBOLG, 2182, 14000.0),
             (FIRBOLG, 2212, 1.0),
             (FIRBOLG, 2215, 6.0),
             (FIRBOLG, 2226, 1.0),
             (FIRBOLG, 2228, 112.5),
+            (FIRBOLG, 2231, 3.0),
+            (FIRBOLG, 2232, 5.5),
             (FIRBOLG, 2233, if self.faster_turret { 3990.0 } else { 5000.0 }),
+            (FIRBOLG, 2234, 185.0),
+            (FIRBOLG, 2235, 105.0),
+            (FIRBOLG, 2236, 4000.0),
+            (FIRBOLG, 2237, 5000.0),
             (FIRBOLG, 2426, 5000.0),
             (AMPLIFIER, 1255, 20.5),
             (DRONE_INTERFACING, 292, 10.0),
@@ -151,8 +168,12 @@ impl EveDataHandlerCore for FirbolgData {
                 is_offensive: matches!(id, MISSILES | TURRET),
                 discharge_attr_id: None,
                 duration_attr_id: duration.map(EAttrId::from_i32),
-                range_attr_id: None,
-                falloff_attr_id: None,
+                range_attr_id: match id {
+                    MISSILES => Some(EAttrId::from_i32(2149)),
+                    TURRET => Some(EAttrId::from_i32(2236)),
+                    _ => None,
+                },
+                falloff_attr_id: (id == TURRET).then_some(EAttrId::from_i32(2237)),
                 tracking_attr_id: None,
                 usage_chance_attr_id: None,
                 resist_attr_id: None,
@@ -271,6 +292,62 @@ fn check_damage(case: &str, actual: [f64; 2], expected: [f64; 2]) {
             (actual - expected).abs() <= tolerance,
             "{case}: expected {expected}, got {actual}"
         );
+    }
+}
+
+#[test]
+fn fighter_application_rounding_is_per_attack_and_opt_in() {
+    let source = Src::new(&FirbolgData::default().into(), None).unwrap();
+    // Pyfa v2.70.0, six Firbolg I following a 38 m target at 350 m/s.
+    // Each pair is DPS and volley, first in compatibility mode and then using native application.
+    for (effect, pyfa, native) in [
+        (
+            TURRET,
+            [52.516698046875, 262.583490234375],
+            [52.516711509605486, 262.58355754802744],
+        ),
+        (
+            MISSILES,
+            [4.930500194196429, 69.02700271875],
+            [4.930500693250402, 69.02700970550563],
+        ),
+    ] {
+        for (mut sol, label, expected) in [
+            (SolOwned::new_with_pyfa_compatibility(&source), "Pyfa", pyfa),
+            (SolOwned::new_with_pyfa_fitting_rounding(&source), "native", native),
+        ] {
+            let origin = Coordinates::new(Value::default(), Value::default(), Value::default());
+            let target = sol
+                .add_fit()
+                .set_ship(ItemTypeId::from_i32(KESTREL), Some(origin), None)
+                .get_item_id();
+            sol.get_ship(&target).unwrap().set_movement(Movement {
+                direction: Direction {
+                    azimuth: Value::default(),
+                    elevation: Value::default(),
+                },
+                speed: PValue::from_f64_checked(350.0 / 325.0).unwrap(),
+            });
+            let mut fit = create_fit(&mut sol, false);
+            let mut fighter = fit.add_fighter(ItemTypeId::from_i32(FIRBOLG), MinionState::Engaging, Some(origin), None);
+            fighter.set_count_override(Some(CountNz::from_u32_checked(6).unwrap()));
+            set_abilities(&mut fighter, &[effect]);
+            fighter.add_proj(&target).unwrap();
+            let applied = fit
+                .stats()
+                .get_stat_dmg_applied(
+                    Default::default(),
+                    Default::default(),
+                    StatCritOptions::Exclude,
+                    &target,
+                )
+                .unwrap();
+            check_damage(
+                &format!("{label} effect {effect}"),
+                [applied.dps.thermal.into_f64(), applied.volley.thermal.into_f64()],
+                expected,
+            );
+        }
     }
 }
 

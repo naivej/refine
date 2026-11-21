@@ -6,7 +6,7 @@ use super::{
     range::{
         get_aoe_burst_range_mult, get_aoe_dd_round_range_mult, get_aoe_dd_sharp_range_mult, get_dd_neut_range_mult,
         get_simple_s2s_range_mult, get_std_full_restricted_range_mult, get_std_full_unrestricted_range_mult,
-        get_std_simple_s2s_range_mult,
+        get_std_simple_s2s_range_mult, pyfa_missile_round,
     },
 };
 use crate::{
@@ -173,7 +173,7 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_attack_m_proj
     if mult == PValue::ZERO {
         return PValue::ZERO;
     }
-    mult * get_legacy_missile_application_mult(
+    let application = mult * get_legacy_missile_application_mult(
         ctx,
         calc,
         projector_uid,
@@ -183,7 +183,12 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_attack_m_proj
         ctx.ac().ftr_abil_atk_missile_explosion_velocity,
         ctx.ac().ftr_abil_atk_missile_reduction_factor,
         ctx.ac().ftr_abil_atk_missile_reduction_sensitivity,
-    )
+    );
+    if ctx.u_data.pyfa_damage_compatibility {
+        pyfa_missile_round(application)
+    } else {
+        application
+    }
 }
 
 pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_missiles_proj_mult(
@@ -198,7 +203,7 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_missiles_proj
     if mult == PValue::ZERO {
         return PValue::ZERO;
     }
-    mult * get_legacy_missile_application_mult(
+    let application = mult * get_legacy_missile_application_mult(
         ctx,
         calc,
         projector_uid,
@@ -208,7 +213,12 @@ pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_missiles_proj
         ctx.ac().ftr_abil_missiles_explosion_velocity,
         ctx.ac().ftr_abil_missiles_reduction_factor,
         ctx.ac().ftr_abil_missiles_reduction_sensitivity,
-    )
+    );
+    if ctx.u_data.pyfa_damage_compatibility {
+        pyfa_missile_round(application)
+    } else {
+        application
+    }
 }
 
 pub(in crate::nd::effect::specs::proj_mult_getter) fn get_ftr_abil_kamikaze_proj_mult(
