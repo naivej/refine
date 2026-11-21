@@ -4,20 +4,26 @@ use crate::{
     ad::{AAttrId, AEffectId, AItemId},
     misc::DmgKinds,
     nd::NEffectOutputGetter,
-    stats::StatTimeOptions,
-    svc::{Calc, SvcCtx},
+    stats::{StatCritOptions, StatTimeOptions},
+    svc::{
+        Calc, SvcCtx,
+        cycle::{CseqCache, CyclingOptions, get_item_cseq_map},
+        vast::aggr::{SeqAccum, aggr_proj_burst},
+    },
     ud::{UItem, UItemId},
 };
 
 const FIRBOLG_I: AItemId = AItemId::from_i32(23059);
 
 pub(super) fn get_pyfa_fighter_damage(
+    cseq_cache: &mut CseqCache,
     ctx: &SvcCtx,
     calc: &mut Calc,
     item_uid: UItemId,
     item: &UItem,
     time_options: StatTimeOptions,
     item_kinds: Option<StatDmgItemKinds>,
+    projection: Option<(UItemId, StatCritOptions)>,
 ) -> Option<(DmgKinds<PValue>, DmgKinds<PValue>)> {
     let (true, UItem::Fighter(fighter), StatTimeOptions::Sim(sim)) =
         (ctx.u_data.pyfa_damage_compatibility, item, time_options)
@@ -78,8 +84,9 @@ pub(super) fn get_pyfa_fighter_damage(
     let refuel_ms = calc.get_item_oattr_oextra(ctx, item_uid, refuel_attr)?;
     let running = fighter.get_reffs()?;
 
+    let attacks = [(turret_rid, turret), (missile_rid, missile)];
     let mut volleys = [DmgKinds::default(); 2];
-    for (volley, (rid, effect)) in volleys.iter_mut().zip([(turret_rid, turret), (missile_rid, missile)]) {
+    for (volley, (rid, effect)) in volleys.iter_mut().zip(attacks) {
         if running.contains(rid)
             && item_kinds.is_none_or(|kinds| kinds.resolve(item, effect))
             && let Some(output) = effect
@@ -89,8 +96,6 @@ pub(super) fn get_pyfa_fighter_damage(
             *volley = output.get_instance();
         }
     }
-    let [turret_volley, missile_volley] = volleys;
-
     // Disabled abilities still determine the Pyfa recall schedule. An attack fires at the
     // start of its cycle, so a partial final turret cycle counts as a full volley.
     let charges = charges.into_pvalue();
@@ -98,16 +103,54 @@ pub(super) fn get_pyfa_fighter_damage(
     let refuel = PValue::from_finite_value_clamped(refuel_ms / Value::THOUSAND)
         + missile_data.ability_charge_reload_duration * charges;
     let turret_shots = (in_space / turret_cycle).ceil_unerr();
-    let mut coordinated_damage = turret_volley * turret_shots;
-    coordinated_damage += missile_volley * charges;
-    let coordinated_dps = coordinated_damage / (in_space + refuel);
-    let unlimited_dps = turret_volley / turret_cycle;
-    let dps = if unlimited_dps.get_total() >= coordinated_dps.get_total() {
-        unlimited_dps
-    } else {
-        coordinated_dps
+
+    let coordinated_dps = |[turret_volley, missile_volley]: [DmgKinds<PValue>; 2]| {
+        let mut damage = turret_volley * turret_shots;
+        damage += missile_volley * charges;
+        damage / (in_space + refuel)
     };
-    let mut volley = turret_volley;
+    let raw_coordinated = coordinated_dps(volleys);
+    let raw_unlimited = volleys[0] / turret_cycle;
+    // The steady Damage Stats getter chooses the source schedule before applying the target.
+    let coordinated = raw_coordinated.get_total() > raw_unlimited.get_total();
+    let dps = if let Some((target, crit_options)) = projection {
+        let burst = CyclingOptions::from_time_options(StatTimeOptions::default());
+        let cycles = get_item_cseq_map(cseq_cache, ctx, calc, item_uid, burst)?;
+        for (volley, (rid, effect)) in volleys.iter_mut().zip(attacks) {
+            if volley.get_total() == PValue::ZERO {
+                continue;
+            }
+            *volley = cycles
+                .get(rid)
+                .zip(effect.normal_dmg.as_ref())
+                .and_then(|(cycle, spec)| {
+                    aggr_proj_burst(
+                        ctx,
+                        calc,
+                        item_uid,
+                        effect,
+                        cycle,
+                        spec,
+                        (),
+                        crit_options,
+                        Some(target),
+                        None,
+                        SeqAccum::new_stack_max(),
+                    )
+                })
+                .map_or_else(DmgKinds::default, |accum| accum.instances.max);
+        }
+        if coordinated {
+            coordinated_dps(volleys)
+        } else {
+            volleys[0] / turret_cycle
+        }
+    } else if coordinated {
+        raw_coordinated
+    } else {
+        raw_unlimited
+    };
+    let [mut volley, missile_volley] = volleys;
     volley += missile_volley;
     Some((dps, volley))
 }
