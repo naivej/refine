@@ -53,6 +53,7 @@ impl<'s> Fit<'s> {
             nosfs: Some(StatCapBlcNosfsOptionsInt::default()),
             consumers: true,
             uncapped_incoming_transfers: false,
+            exact_incoming_transfer_resistance: false,
             incoming_transfers: true,
             incoming_neuts: true,
         };
@@ -62,6 +63,7 @@ impl<'s> Fit<'s> {
             nosfs: Some(StatCapBlcNosfsOptionsInt::default()),
             consumers: false,
             uncapped_incoming_transfers: false,
+            exact_incoming_transfer_resistance: false,
             incoming_transfers: true,
             incoming_neuts: false,
         };
@@ -71,6 +73,7 @@ impl<'s> Fit<'s> {
             nosfs: None,
             consumers: true,
             uncapped_incoming_transfers: false,
+            exact_incoming_transfer_resistance: false,
             incoming_transfers: false,
             incoming_neuts: true,
         };
@@ -403,6 +406,7 @@ impl<'s> Fit<'s> {
                     ship_uid,
                     time_burst,
                     shield_perc_peak,
+                    false,
                 )
                 .unwrap();
             self.sol
@@ -413,6 +417,7 @@ impl<'s> Fit<'s> {
                     ship_uid,
                     time_sim_inf,
                     shield_perc_peak,
+                    false,
                 )
                 .unwrap();
             self.sol
@@ -423,6 +428,7 @@ impl<'s> Fit<'s> {
                     ship_uid,
                     time_sim_1200,
                     shield_perc_peak,
+                    false,
                 )
                 .unwrap();
             self.sol

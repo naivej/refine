@@ -7,6 +7,7 @@ use crate::{
         Calc, SvcCtx, Vast,
         cycle::{CseqCache, CyclingOptions, GetMainDuration, get_item_cseq_map},
         err::IntStatItemError,
+        funcs::is_pyfa_assistance_blocked,
         vast::{
             aggr::{
                 SeqAccum, aggr_local_burst, aggr_local_looped, aggr_local_time, aggr_proj_burst, aggr_proj_looped,
@@ -28,9 +29,19 @@ impl Vast {
         item_uid: UItemId,
         time_options: StatTimeOptions,
         shield_perc: UnitInterval,
+        pyfa_incoming: bool,
     ) -> Result<StatRps, IntStatItemError<!>> {
         let item = check_drone_fighter_ship(ctx.u_data, item_uid)?;
-        Ok(self.get_stat_item_rps_unchecked(cseq_cache, ctx, calc, item_uid, item, time_options, shield_perc))
+        Ok(self.get_stat_item_rps_unchecked(
+            cseq_cache,
+            ctx,
+            calc,
+            item_uid,
+            item,
+            time_options,
+            shield_perc,
+            pyfa_incoming,
+        ))
     }
     pub(in crate::svc::vast::stats::tank) fn get_stat_item_rps_unchecked(
         &self,
@@ -41,6 +52,7 @@ impl Vast {
         item: &UItem,
         time_options: StatTimeOptions,
         shield_perc: UnitInterval,
+        pyfa_incoming: bool,
     ) -> StatRps {
         // Local reps
         let (local_shield, local_armor, local_hull) = match item {
@@ -53,45 +65,31 @@ impl Vast {
             }
             _ => (PValue::ZERO, PValue::ZERO, PValue::ZERO),
         };
-        // Incoming remote reps - shield
+        let assistance_blocked = pyfa_incoming && is_pyfa_assistance_blocked(ctx, calc, item_uid);
         let mut reuse_irr_entries = Vec::new();
-        get_irr_data(
-            cseq_cache,
-            &mut reuse_irr_entries,
-            ctx,
-            calc,
-            item_uid,
-            time_options,
-            &self.irr_shield,
-        );
-        let remote_shield = irr_data_to_raw(&reuse_irr_entries);
-        let remote_shield_penalized = irr_data_to_penalized(&reuse_irr_entries);
-        // Incoming remote reps - armor
-        reuse_irr_entries.clear();
-        get_irr_data(
-            cseq_cache,
-            &mut reuse_irr_entries,
-            ctx,
-            calc,
-            item_uid,
-            time_options,
-            &self.irr_armor,
-        );
-        let remote_armor = irr_data_to_raw(&reuse_irr_entries);
-        let remote_armor_penalized = irr_data_to_penalized(&reuse_irr_entries);
-        // Incoming remote reps - hull
-        reuse_irr_entries.clear();
-        get_irr_data(
-            cseq_cache,
-            &mut reuse_irr_entries,
-            ctx,
-            calc,
-            item_uid,
-            time_options,
-            &self.irr_hull,
-        );
-        let remote_hull = irr_data_to_raw(&reuse_irr_entries);
-        let remote_hull_penalized = irr_data_to_penalized(&reuse_irr_entries);
+        let [
+            (remote_shield, remote_shield_penalized),
+            (remote_armor, remote_armor_penalized),
+            (remote_hull, remote_hull_penalized),
+        ] = [&self.irr_shield, &self.irr_armor, &self.irr_hull].map(|incoming| {
+            reuse_irr_entries.clear();
+            if !assistance_blocked {
+                get_irr_data(
+                    cseq_cache,
+                    &mut reuse_irr_entries,
+                    ctx,
+                    calc,
+                    item_uid,
+                    time_options,
+                    incoming,
+                    pyfa_incoming,
+                );
+            }
+            (
+                irr_data_to_raw(&reuse_irr_entries),
+                irr_data_to_penalized(&reuse_irr_entries),
+            )
+        });
         // Regen
         let shield_regen = get_shield_regen(ctx, calc, item_uid, shield_perc);
         StatRps {
@@ -172,6 +170,7 @@ fn get_irr_data(
     projectee_item_uid: UItemId,
     time_options: StatTimeOptions,
     irr_data: &RMapRMapRMap<UItemId, UItemId, REffectId, REffectProjOpcSpec<NEffectGeneralOutputGetter>>,
+    pyfa_incoming: bool,
 ) {
     let Some(incoming_reps) = irr_data.get_l1(&projectee_item_uid) else {
         return;
@@ -186,6 +185,15 @@ fn get_irr_data(
                 continue;
             };
             let effect = ctx.u_data.r_data.get_effect_by_rid(effect_rid);
+            let mut adjusted_spec;
+            let ospec = if pyfa_incoming {
+                adjusted_spec = *ospec;
+                adjusted_spec.remote_limit_attr_id = None;
+                adjusted_spec.resist = None;
+                &adjusted_spec
+            } else {
+                ospec
+            };
             match time_options {
                 StatTimeOptions::Burst(burst_opts) => {
                     if let Some(accum) = aggr_proj_burst(

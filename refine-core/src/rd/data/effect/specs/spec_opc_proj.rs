@@ -16,6 +16,7 @@ where
     pub(crate) proj_mult_str: Option<NEffectProjMultGetter>,
     pub(crate) proj_mult_chance: Option<NEffectProjMultGetter>,
     pub(crate) resist: Option<REffectResist>,
+    pub(crate) exact_resistance: bool,
     pub(crate) local_limit_attr_id: Option<RAttrId>,
     pub(crate) remote_limit_attr_id: Option<RAttrId>,
 }
@@ -42,6 +43,7 @@ where
                 .resist
                 .as_ref()
                 .and_then(|n_resist| REffectResist::try_from_n_effect_resist(n_resist, a_effect, attr_aid_rid_map)),
+            exact_resistance: false,
             local_limit_attr_id: n_proj_opc_spec
                 .local_limit_attr_id
                 .and_then(|attr_aid| attr_aid_rid_map.get(&attr_aid).copied()),
@@ -67,6 +69,7 @@ mod debug {
         pub(crate) fn consistency_check(&self, u_data: &UData) -> DebugResult {
             let Self {
                 resist,
+                exact_resistance: _,
                 local_limit_attr_id,
                 remote_limit_attr_id,
                 // Not checked

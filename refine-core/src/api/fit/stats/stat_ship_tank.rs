@@ -26,6 +26,17 @@ impl<'s> FitStats<'s> {
     ) -> Result<StatRps, StatFitShipError<!>> {
         Ok(self.get_ship_for_stats()?.get_stat_rps(time_options, shield_perc)?)
     }
+    /// Read repair rates using the ship's [crate::stats::ItemStats::get_stat_rps_pyfa] view.
+    /// Use [Self::get_stat_rps] for the ordinary applied repair readout.
+    pub fn get_stat_rps_pyfa(
+        &mut self,
+        time_options: StatTimeOptions,
+        shield_perc: UnitInterval,
+    ) -> Result<StatRps, StatFitShipError<!>> {
+        Ok(self
+            .get_ship_for_stats()?
+            .get_stat_rps_pyfa(time_options, shield_perc)?)
+    }
     pub fn get_stat_erps(
         &mut self,
         incoming_dps: Option<DpsProfile>,

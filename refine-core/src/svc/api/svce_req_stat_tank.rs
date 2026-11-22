@@ -54,6 +54,7 @@ impl Svc {
         item_uid: UItemId,
         time_options: StatTimeOptions,
         shield_perc: UnitInterval,
+        pyfa_incoming: bool,
     ) -> Result<StatRps, IntStatItemError<!>> {
         self.vast.get_stat_item_rps(
             cseq_cache,
@@ -62,6 +63,7 @@ impl Svc {
             item_uid,
             time_options,
             shield_perc,
+            pyfa_incoming,
         )
     }
     pub(crate) fn get_stat_item_erps(

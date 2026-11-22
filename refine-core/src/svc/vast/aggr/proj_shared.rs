@@ -103,7 +103,12 @@ impl<I> AggrProjInvData<I> {
                 }
                 // Resists
                 if let Some(resist) = ospec.resist {
-                    match resist.get_mult_by_projection(ctx, calc, projector_uid, projectee_uid) {
+                    let multiplier = if ospec.exact_resistance {
+                        resist.get_exact_mult_by_projection(ctx, calc, projector_uid, projectee_uid)
+                    } else {
+                        resist.get_mult_by_projection(ctx, calc, projector_uid, projectee_uid)
+                    };
+                    match multiplier {
                         Some(UnitInterval::ZERO) => return None,
                         Some(resist_mult) => str_mult *= resist_mult,
                         None => (),

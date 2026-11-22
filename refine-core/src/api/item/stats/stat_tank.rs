@@ -40,6 +40,27 @@ impl<'s> ItemStats<'s> {
         time_options: StatTimeOptions,
         shield_perc: UnitInterval,
     ) -> Result<StatRps, StatItemError<!>> {
+        self.get_stat_rps_impl(time_options, shield_perc, false)
+    }
+    /// Read repair rates as Pyfa does, with incoming repair before recipient
+    /// capacity and repair impedance. Range, spool, diminishing returns,
+    /// and the fitted recipient's `disallowAssistance` flag still apply.
+    /// With the pinned Pyfa v2.70.0 data, the recipient's active local Warp
+    /// Disruption Field Generator effect (3380) also blocks incoming repair.
+    /// The applied repair readout remains available through [Self::get_stat_rps].
+    pub fn get_stat_rps_pyfa(
+        &mut self,
+        time_options: StatTimeOptions,
+        shield_perc: UnitInterval,
+    ) -> Result<StatRps, StatItemError<!>> {
+        self.get_stat_rps_impl(time_options, shield_perc, true)
+    }
+    fn get_stat_rps_impl(
+        &mut self,
+        time_options: StatTimeOptions,
+        shield_perc: UnitInterval,
+        pyfa_incoming: bool,
+    ) -> Result<StatRps, StatItemError<!>> {
         let item_uid = self.uid;
         let sol = &mut *self.sol;
         sol.svc
@@ -49,6 +70,7 @@ impl<'s> ItemStats<'s> {
                 item_uid,
                 time_options,
                 shield_perc,
+                pyfa_incoming,
             )
             .map_err(|e| StatItemError::from_svc_err(e, &sol.u_data.items))
     }

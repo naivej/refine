@@ -18,6 +18,18 @@ impl REffectResist {
         let resist_rid = self.get_attr_rid(ctx.u_data, projector_uid)?;
         Self::get_mult_by_aspec(ctx, calc, AttrSpec::new(projectee_uid, resist_rid))
     }
+    pub(in crate::svc) fn get_exact_mult_by_projection(
+        self,
+        ctx: &SvcCtx,
+        calc: &mut Calc,
+        projector_uid: UItemId,
+        projectee_uid: UItemId,
+    ) -> Option<UnitInterval> {
+        let resist_rid = self.get_attr_rid(ctx.u_data, projector_uid)?;
+        let attr = AttrSpec::new(projectee_uid, resist_rid);
+        calc.get_item_attr_odogma(ctx, attr.item_uid, attr.attr_rid)
+            .map(UnitInterval::from_value_clamped)
+    }
     pub(in crate::svc) fn get_attr_rid(self, u_data: &UData, projector_uid: UItemId) -> Option<RAttrId> {
         match self {
             Self::Attr(resist_attr_rid) => Some(resist_attr_rid),

@@ -28,6 +28,8 @@ pub struct StatCapBlcSrcKinds<I = ItemId> {
     #[cfg_attr(feature = "serde", serde(default))]
     uncapped_incoming_transfers: bool = false,
     #[cfg_attr(feature = "serde", serde(default))]
+    exact_incoming_transfer_resistance: bool = false,
+    #[cfg_attr(feature = "serde", serde(default))]
     incoming_neuts: DefOption = DefOption::Default,
 }
 const impl<I> Default for StatCapBlcSrcKinds<I> {
@@ -64,6 +66,16 @@ impl<I> StatCapBlcSrcKinds<I> {
     /// exceeds the recipient's total capacitor capacity. Defaults to false.
     pub fn with_uncapped_incoming_transfers(mut self, enabled: bool) -> Self {
         self.uncapped_incoming_transfers = enabled;
+        self
+    }
+    /// Preserve tiny nonzero incoming transfer multipliers as Pyfa does.
+    /// This also honors the fitted recipient's `disallowAssistance` flag.
+    /// With the pinned Pyfa v2.70.0 data, the recipient's active local Warp
+    /// Disruption Field Generator effect (3380) also blocks incoming transfers.
+    /// Defaults to false, retaining the ordinary transfer readout and its
+    /// suppression of multipliers at or below 0.0001.
+    pub fn with_exact_incoming_transfer_resistance(mut self, enabled: bool) -> Self {
+        self.exact_incoming_transfer_resistance = enabled;
         self
     }
     pub fn with_incoming_neuts(mut self, enabled: bool) -> Self {
@@ -120,6 +132,7 @@ impl<I1> StatCapBlcSrcKinds<I1> {
             consumers: self.consumers,
             incoming_transfers: self.incoming_transfers,
             uncapped_incoming_transfers: self.uncapped_incoming_transfers,
+            exact_incoming_transfer_resistance: self.exact_incoming_transfer_resistance,
             incoming_neuts: self.incoming_neuts,
         })
     }
@@ -136,6 +149,7 @@ pub(crate) struct StatCapBlcSrcKindsInt {
     pub(crate) consumers: bool,
     pub(crate) incoming_transfers: bool,
     pub(crate) uncapped_incoming_transfers: bool,
+    pub(crate) exact_incoming_transfer_resistance: bool,
     pub(crate) incoming_neuts: bool,
 }
 impl StatCapBlcSrcKindsInt {
@@ -148,6 +162,7 @@ impl StatCapBlcSrcKindsInt {
             consumers,
             incoming_transfers,
             uncapped_incoming_transfers,
+            exact_incoming_transfer_resistance,
             incoming_neuts,
         } = pub_opts;
         Ok(Self {
@@ -160,6 +175,7 @@ impl StatCapBlcSrcKindsInt {
             consumers: consumers.is_enabled(*default),
             incoming_transfers: incoming_transfers.is_enabled(*default),
             uncapped_incoming_transfers: *uncapped_incoming_transfers,
+            exact_incoming_transfer_resistance: *exact_incoming_transfer_resistance,
             incoming_neuts: incoming_neuts.is_enabled(*default),
         })
     }
