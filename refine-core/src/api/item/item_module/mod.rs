@@ -1,5 +1,6 @@
 pub use fit_add_module::ModuleAddError;
 pub use module::Module;
+pub use pyfa_heat::{PyfaHeatBurnout, PyfaModuleHeat};
 pub use sol_get_module::ModuleGetError;
 
 mod fit_add_module;
@@ -13,6 +14,7 @@ mod module_set_spool_override;
 mod module_set_state;
 mod module_set_type_id;
 mod mutation;
+mod pyfa_heat;
 mod ranged_proj;
 mod shared;
 mod sol_get_module;

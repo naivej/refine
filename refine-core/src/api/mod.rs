@@ -12,11 +12,11 @@ pub use item::{
     FullMAttr, FullMAttrGetError, FullMAttrIter, FullMAttrValueSetError, FwEffect, FwEffectGetError, Implant,
     ImplantGetError, Item, ItemAttrGetError, ItemAttrsIterError, ItemCommon, ItemEffectsIterError, ItemGetError,
     ItemModifiersIterError, ItemRemoveError, ItemStats, ItemStatsCommon, Module, ModuleAddError, ModuleGetError,
-    Mutation, MutationAddError, Proj, ProjAddError, ProjEffect, ProjEffectGetError, ProjGetError, ProjIter, RangedProj,
-    RangedProjIter, RawMAttr, RawMAttrGetError, RawMAttrIter, Rig, RigGetError, Service, ServiceGetError, Ship,
-    ShipGetError, SideEffect, SideEffectGetError, SideEffectIter, SideEffectStr, Skill, SkillAddError, SkillGetError,
-    SkillTypeIdSetError, Stance, StanceGetError, StatItemAppliedError, StatItemError, Subsystem, SubsystemGetError,
-    SwEffect, SwEffectGetError, SwitchedItemStats,
+    Mutation, MutationAddError, Proj, ProjAddError, ProjEffect, ProjEffectGetError, ProjGetError, ProjIter,
+    PyfaHeatBurnout, PyfaModuleHeat, RangedProj, RangedProjIter, RawMAttr, RawMAttrGetError, RawMAttrIter, Rig,
+    RigGetError, Service, ServiceGetError, Ship, ShipGetError, SideEffect, SideEffectGetError, SideEffectIter,
+    SideEffectStr, Skill, SkillAddError, SkillGetError, SkillTypeIdSetError, Stance, StanceGetError,
+    StatItemAppliedError, StatItemError, Subsystem, SubsystemGetError, SwEffect, SwEffectGetError, SwitchedItemStats,
 };
 use item::{ItemSealed, get_ship_rib};
 pub use misc::{
