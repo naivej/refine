@@ -31,6 +31,8 @@ pub struct StatCapBlcSrcKinds<I = ItemId> {
     exact_incoming_transfer_resistance: bool = false,
     #[cfg_attr(feature = "serde", serde(default))]
     incoming_neuts: DefOption = DefOption::Default,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pyfa_incoming_nosferatu: bool = false,
 }
 const impl<I> Default for StatCapBlcSrcKinds<I> {
     fn default() -> Self {
@@ -80,6 +82,12 @@ impl<I> StatCapBlcSrcKinds<I> {
     }
     pub fn with_incoming_neuts(mut self, enabled: bool) -> Self {
         self.incoming_neuts = enabled.into();
+        self
+    }
+    /// Include range-adjusted Nosferatu in incoming neutralization as Pyfa does.
+    /// Requires incoming neutralization to be enabled. Defaults to false.
+    pub fn with_pyfa_incoming_nosferatu(mut self, enabled: bool) -> Self {
+        self.pyfa_incoming_nosferatu = enabled;
         self
     }
 }
@@ -134,6 +142,7 @@ impl<I1> StatCapBlcSrcKinds<I1> {
             uncapped_incoming_transfers: self.uncapped_incoming_transfers,
             exact_incoming_transfer_resistance: self.exact_incoming_transfer_resistance,
             incoming_neuts: self.incoming_neuts,
+            pyfa_incoming_nosferatu: self.pyfa_incoming_nosferatu,
         })
     }
 }
@@ -151,6 +160,7 @@ pub(crate) struct StatCapBlcSrcKindsInt {
     pub(crate) uncapped_incoming_transfers: bool,
     pub(crate) exact_incoming_transfer_resistance: bool,
     pub(crate) incoming_neuts: bool,
+    pub(crate) pyfa_incoming_nosferatu: bool,
 }
 impl StatCapBlcSrcKindsInt {
     pub(crate) fn from_pub(pub_opts: &StatCapBlcSrcKinds, u_data: &UData) -> Result<Self, ProjecteeUidError> {
@@ -164,6 +174,7 @@ impl StatCapBlcSrcKindsInt {
             uncapped_incoming_transfers,
             exact_incoming_transfer_resistance,
             incoming_neuts,
+            pyfa_incoming_nosferatu,
         } = pub_opts;
         Ok(Self {
             regen: regen.is_enabled(*default),
@@ -177,6 +188,7 @@ impl StatCapBlcSrcKindsInt {
             uncapped_incoming_transfers: *uncapped_incoming_transfers,
             exact_incoming_transfer_resistance: *exact_incoming_transfer_resistance,
             incoming_neuts: incoming_neuts.is_enabled(*default),
+            pyfa_incoming_nosferatu: *pyfa_incoming_nosferatu,
         })
     }
 }

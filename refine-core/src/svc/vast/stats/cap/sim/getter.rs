@@ -43,6 +43,7 @@ impl Vast {
             nosf_projectee_item_uid,
             optional_reloads,
             limit_instances: true,
+            pyfa_incoming_nosferatu: false,
         };
         let (events, injector_events) = prepare_events(cseq_cache, ctx, calc, &sources, stagger);
         let mut sim = CapSim::new(start_cap, max_cap, recharge_time_s, events, injector_events);
@@ -76,6 +77,7 @@ impl Vast {
             }),
             // Pyfa limits total cap after each event. Injector selection uses its full output.
             limit_instances: false,
+            pyfa_incoming_nosferatu: true,
         };
         let cycles = prepare_pyfa_cycles(cseq_cache, ctx, calc, &sources, factor_reload)
             .map_err(IntStatItemError::StatSpecific)?;

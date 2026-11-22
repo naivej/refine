@@ -1,6 +1,9 @@
 use crate::{
-    Charge, Count, FitId, ItemCommon, ItemSpoolInfo, ModRack, ModuleState, OptionalReload, RackPos, Spool,
+    AttrId, Charge, Count, EffectId, FitId, ItemCommon, ItemSpoolInfo, ModRack, ModuleState, OptionalReload, RackPos,
+    Spool, Value,
+    ad::{AAttrId, AEffectId},
     api::ItemSealed,
+    err::ItemAttrGetError,
     misc::InfCount,
     pyfa_graph::{MissileMagazine, RemoteRepairSchedule},
     sol::SolCore,
@@ -21,6 +24,21 @@ impl<'s> Module<'s> {
     }
     pub fn get_state(&self) -> ModuleState {
         get_u_module(self.sol, self.uid).get_module_state()
+    }
+    /// Read Pyfa's fitted capacitor need per cycle. An active Nosferatu displays
+    /// its fitted transfer as a negative cost.
+    pub fn get_pyfa_capacitor_need(&mut self) -> Result<Value, ItemAttrGetError> {
+        let effect = EffectId::from_aid(AEffectId::ENERGY_NOSF_FALLOFF);
+        if self
+            .iter_effects()
+            .is_ok_and(|mut effects| effects.any(|(id, info)| id == effect && info.running))
+        {
+            return self
+                .get_attr(&AttrId::from_aid(AAttrId::POWER_TRANSFER_AMOUNT))
+                .map(|values| -values.modified);
+        }
+        self.get_attr(&AttrId::from_aid(AAttrId::CAPACITOR_NEED))
+            .map(|values| values.modified)
     }
     pub fn get_rack(&self) -> ModRack {
         get_u_module(self.sol, self.uid).get_rack()

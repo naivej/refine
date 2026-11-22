@@ -25,6 +25,7 @@ pub(crate) enum NEffectGeneralOutputGetter {
     // Neut-related
     Neut,
     NeutNosf,
+    NeutNosfPyfa,
     NeutAoe,
     NeutBomb,
     NeutDdWarmup,
@@ -55,6 +56,7 @@ impl NEffectOutputGetter for NEffectGeneralOutputGetter {
             // Neut-related
             Self::Neut => get_attr_extra(ctx, calc, item_uid, effect, ctx.ac().energy_neut_amount, true),
             Self::NeutNosf => get_neut_nosf(ctx, calc, item_uid, effect),
+            Self::NeutNosfPyfa => get_attr_extra(ctx, calc, item_uid, effect, ctx.ac().power_transfer_amount, true),
             Self::NeutAoe => get_neut_aoe(ctx, calc, item_uid),
             Self::NeutBomb => get_neut_bomb(ctx, calc, item_uid),
             Self::NeutDdWarmup => {

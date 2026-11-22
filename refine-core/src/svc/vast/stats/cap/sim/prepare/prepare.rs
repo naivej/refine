@@ -17,9 +17,12 @@ use crate::{
         vast::{
             VastFitData,
             aggr::{AggrIterData, aggr_local_iter, aggr_proj_iter},
-            stats::cap::sim::{
-                event::{CapSimEvent, CapSimEventData, CapSimEventInjector},
-                shared::Direction,
+            stats::cap::{
+                sim::{
+                    event::{CapSimEvent, CapSimEventData, CapSimEventInjector},
+                    shared::Direction,
+                },
+                use_pyfa_nosferatu_drain,
             },
         },
     },
@@ -61,6 +64,7 @@ pub(in crate::svc::vast::stats::cap::sim) struct CapSources<'a> {
     pub(in crate::svc::vast::stats::cap::sim) nosf_projectee_item_uid: Option<UItemId>,
     pub(in crate::svc::vast::stats::cap::sim) optional_reloads: Option<OptionalReload>,
     pub(in crate::svc::vast::stats::cap::sim) limit_instances: bool,
+    pub(in crate::svc::vast::stats::cap::sim) pyfa_incoming_nosferatu: bool,
 }
 impl CapSources<'_> {
     pub(super) fn visit<E>(
@@ -112,6 +116,9 @@ impl CapSources<'_> {
                 emit,
                 |calc, item_uid, effect, cseq, ospec| {
                     let mut ospec = *ospec;
+                    if self.pyfa_incoming_nosferatu && matches!(kind, CapSourceKind::IncomingNeut) {
+                        use_pyfa_nosferatu_drain(&mut ospec);
+                    }
                     if !self.limit_instances {
                         ospec.local_limit_attr_id = None;
                         ospec.remote_limit_attr_id = None;
