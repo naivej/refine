@@ -1,4 +1,4 @@
-use super::option::StatCapBlcSrcKindsInt;
+use super::{super::use_pyfa_nosferatu_drain, option::StatCapBlcSrcKindsInt};
 use crate::{
     PValue, UnitInterval, Value,
     stats::{StatCritOptions, StatTimeOptions},
@@ -57,7 +57,15 @@ impl Vast {
             balance += get_incoming_cap_transfers(cseq_cache, ctx, calc, time_options, item_uid, self, &src_kinds);
         }
         if src_kinds.incoming_neuts {
-            balance -= get_incoming_neuts(cseq_cache, ctx, calc, time_options, item_uid, self);
+            balance -= get_incoming_neuts(
+                cseq_cache,
+                ctx,
+                calc,
+                time_options,
+                item_uid,
+                self,
+                src_kinds.pyfa_incoming_nosferatu,
+            );
         }
         Ok(balance)
     }
@@ -315,6 +323,7 @@ fn get_incoming_neuts(
     time_options: StatTimeOptions,
     cap_item_uid: UItemId,
     vast: &Vast,
+    pyfa_incoming_nosferatu: bool,
 ) -> PValue {
     let mut nps = PValue::ZERO;
     let cycling_options = CyclingOptions::from_time_options(time_options);
@@ -326,6 +335,11 @@ fn get_incoming_neuts(
             continue;
         };
         for (&effect_rid, ospec) in item_data.iter() {
+            let mut ospec = *ospec;
+            if pyfa_incoming_nosferatu {
+                use_pyfa_nosferatu_drain(&mut ospec);
+            }
+            let ospec = &ospec;
             let Some(cseq) = cseq_map.get(effect_rid) else {
                 continue;
             };
