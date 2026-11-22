@@ -503,7 +503,7 @@ mod disintegrator_graph_tests {
     #[test]
     fn vedmak_falloff_and_tracking_match_pyfa_damage_stats() {
         let gun = PyfaDisintegrator {
-            optimal_m: 18_648.4375,
+            optimal_m: 18_648.437_5,
             falloff_m: 1.25,
             tracking: 52.5,
             signature_resolution_m: 40_000.0,

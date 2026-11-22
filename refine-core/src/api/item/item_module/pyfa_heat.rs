@@ -84,7 +84,7 @@ impl PyfaModuleHeat {
         };
         let cycles = expected.floor();
         let time_s = cycles * display_cycle_s;
-        (cycles < u64::MAX as f64 && time_s.is_finite()).then(|| PyfaHeatBurnout {
+        (cycles < u64::MAX as f64 && time_s.is_finite()).then_some(PyfaHeatBurnout {
             cycles: cycles as u64,
             time_s,
         })
