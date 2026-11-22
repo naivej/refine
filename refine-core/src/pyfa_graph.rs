@@ -27,17 +27,118 @@ pub struct PyfaEwarSource {
 }
 
 fn pyfa_ewar_range_factor(source: &PyfaEwarSource, distance_m: f64) -> f64 {
-    if source.falloff_m > 0.0 {
-        if distance_m > source.optimal_m + 3.0 * source.falloff_m {
-            return 0.0;
-        }
-        let ratio = (distance_m - source.optimal_m).max(0.0) / source.falloff_m;
-        let exponent = ratio.powf(std::hint::black_box(2.0));
-        std::hint::black_box(0.5_f64).powf(exponent)
-    } else if distance_m <= source.optimal_m {
+    if distance_m > source.optimal_m + 3.0 * source.falloff_m {
+        return 0.0;
+    }
+    pyfa_falloff_factor(source.optimal_m, source.falloff_m, distance_m)
+}
+
+fn pyfa_falloff_factor(optimal_m: f64, falloff_m: f64, distance_m: f64) -> f64 {
+    if distance_m <= optimal_m {
         1.0
+    } else if falloff_m > 0.0 {
+        pyfa_gaussian((distance_m - optimal_m) / falloff_m)
     } else {
         0.0
+    }
+}
+
+fn pyfa_gaussian(ratio: f64) -> f64 {
+    // Preserve Pyfa's two Python power operations before decimal rounding.
+    let exponent = ratio.powf(std::hint::black_box(2.0));
+    std::hint::black_box(0.5_f64).powf(exponent)
+}
+
+/// Fitted attributes of the disintegrator in Pyfa's Damage Stats graph.
+#[derive(Clone, Copy, Debug)]
+pub struct PyfaDisintegrator {
+    pub optimal_m: f64,
+    pub falloff_m: f64,
+    pub tracking: f64,
+    pub signature_resolution_m: f64,
+}
+
+/// A ship's radius, absolute speed and angle relative to the source-to-target line.
+#[derive(Clone, Copy, Debug)]
+pub struct PyfaDamageGraphMotion {
+    pub radius_m: f64,
+    pub speed_m_per_s: f64,
+    pub angle_deg: f64,
+}
+
+impl PyfaDamageGraphMotion {
+    fn transversal(self) -> Option<f64> {
+        if !nonnegative(self.radius_m) || !nonnegative(self.speed_m_per_s) || !self.angle_deg.is_finite() {
+            return None;
+        }
+        let angle = self.angle_deg * std::f64::consts::PI / 180.0;
+        let velocity = self.speed_m_per_s * angle.sin();
+        velocity.is_finite().then_some(velocity)
+    }
+}
+
+/// Opt-in disintegrator application for Pyfa's Damage Stats plot.
+/// The graph samples unrestricted falloff even though the directed effect ends at optimal.
+#[derive(Clone, Copy, Debug)]
+pub struct PyfaDisintegratorGraph {
+    gun: PyfaDisintegrator,
+    source_radius_m: f64,
+    target_radius_m: f64,
+    transversal_m_per_s: f64,
+    tracking_denominator: f64,
+}
+
+impl PyfaDisintegratorGraph {
+    pub fn new(
+        gun: PyfaDisintegrator,
+        source: PyfaDamageGraphMotion,
+        target: PyfaDamageGraphMotion,
+        target_signature_m: f64,
+    ) -> Option<Self> {
+        let tracking_denominator = gun.tracking * target_signature_m;
+        let transversal_m_per_s = (source.transversal()? - target.transversal()?).abs();
+        if !nonnegative(gun.optimal_m)
+            || !nonnegative(gun.falloff_m)
+            || !positive(gun.tracking)
+            || !positive(gun.signature_resolution_m)
+            || !positive(target_signature_m)
+            || !positive(tracking_denominator)
+            || !transversal_m_per_s.is_finite()
+        {
+            return None;
+        }
+        Some(Self {
+            gun,
+            source_radius_m: source.radius_m,
+            target_radius_m: target.radius_m,
+            transversal_m_per_s,
+            tracking_denominator,
+        })
+    }
+
+    /// Returns the rounded application multiplier, including wrecking hits, at a surface distance.
+    /// Apply it to fitted paper damage within the source's lock range.
+    pub fn application_at(&self, distance_m: f64) -> Option<f64> {
+        if !nonnegative(distance_m) {
+            return None;
+        }
+        let center_distance_m = self.source_radius_m + distance_m + self.target_radius_m;
+        let angular_speed = if self.transversal_m_per_s == 0.0 {
+            0.0
+        } else {
+            self.transversal_m_per_s / center_distance_m
+        };
+        let range = pyfa_falloff_factor(self.gun.optimal_m, self.gun.falloff_m, distance_m);
+        let tracking = angular_speed * self.gun.signature_resolution_m / self.tracking_denominator;
+        let chance = range * pyfa_gaussian(tracking);
+        let wrecking = chance.min(0.01);
+        let normal = (chance - wrecking) * ((0.01 + chance) / 2.0 + 0.49);
+        let application = normal + 3.0 * wrecking;
+        // Pyfa floatUnerr rounds the final multiplier to seven significant digits.
+        if application == 0.0 {
+            return Some(0.0);
+        }
+        format!("{application:.6e}").parse().ok()
     }
 }
 
@@ -393,6 +494,63 @@ fn positive(value: f64) -> bool {
 
 fn nonnegative(value: f64) -> bool {
     value.is_finite() && value >= 0.0
+}
+
+#[cfg(test)]
+mod disintegrator_graph_tests {
+    use super::{PyfaDamageGraphMotion, PyfaDisintegrator, PyfaDisintegratorGraph};
+
+    #[test]
+    fn vedmak_falloff_and_tracking_match_pyfa_damage_stats() {
+        let gun = PyfaDisintegrator {
+            optimal_m: 18_648.4375,
+            falloff_m: 1.25,
+            tracking: 52.5,
+            signature_resolution_m: 40_000.0,
+        };
+        let source = PyfaDamageGraphMotion {
+            radius_m: 250.0,
+            speed_m_per_s: 120.0,
+            angle_deg: 25.0,
+        };
+        let distances = [
+            gun.optimal_m.next_down(),
+            gun.optimal_m,
+            gun.optimal_m + 0.5 * gun.falloff_m,
+            gun.optimal_m + gun.falloff_m,
+            gun.optimal_m + 2.0 * gun.falloff_m,
+            100_000.0,
+        ];
+        // Stock applied DPS divided by full-spool paper DPS for the two v2.70.0 fixtures.
+        for (radius_m, signature_m, speed_m_per_s, expected) in [
+            (
+                25.0,
+                38.0,
+                350.0,
+                [0.9170003, 0.9170003, 0.7169019, 0.3622942, 0.05531271, 0.0],
+            ),
+            (
+                250.0,
+                400.0,
+                60.0,
+                [1.015049, 1.015049, 0.790642, 0.3950497, 0.0576281, 0.0],
+            ),
+        ] {
+            let target = PyfaDamageGraphMotion {
+                radius_m,
+                speed_m_per_s,
+                angle_deg: 90.0,
+            };
+            let graph = PyfaDisintegratorGraph::new(gun, source, target, signature_m).unwrap();
+            assert_eq!(
+                distances.map(|distance| graph.application_at(distance).unwrap()),
+                expected
+            );
+            assert_eq!(graph.application_at(f64::NAN), None);
+            assert_eq!(graph.application_at(-1.0), None);
+            assert!(PyfaDisintegratorGraph::new(gun, source, target, 0.0).is_none());
+        }
+    }
 }
 
 #[cfg(test)]
